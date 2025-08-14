@@ -43,23 +43,22 @@ let MOCK_CAMPAIGNS: Campaign[] = [
 ];
 
 
-const NLU_SYSTEM_INSTRUCTION = `
-You are an NLU engine for VoiceBook, a voice-controlled social media app. Your task is to analyze the user's command, which will be provided directly as the content of the prompt, and respond with a single, valid JSON object.
+const NLU_SYSTEM_INSTRUCTION_BASE = `
+You are an NLU engine for VoiceBook, a voice-controlled social media app. Your task is to analyze the user's command and respond with a single, valid JSON object.
 
 The JSON object MUST have an "intent" field and an optional "slots" object.
 The user might speak in English or Bengali.
 
-CONTEXTUAL AWARENESS:
-An optional list of 'available_user_names' might be appended to the user's command on a new line. If this list is provided, you MUST use it as the primary source for matching the 'target_name' slot. The 'target_name' you return in the slot MUST be an exact name from that list.
-
 If the user's intent cannot be determined from the list below, the "intent" field in your JSON response must be "unknown".
 
 ---
-EXAMPLE 1
+EXAMPLE 1 (with context provided in system instructions)
 ---
-USER PROMPT:
-go to shojib's profile
-available_user_names: ["Sumi Ahmed", "Shojib Khan", "Sharmin Chowdhury"]
+CONTEXT:
+Available names: ["Sumi Ahmed", "Shojib Khan", "Sharmin Chowdhury"]
+
+USER COMMAND:
+"go to shojib's profile"
 
 YOUR JSON RESPONSE:
 {
@@ -70,10 +69,10 @@ YOUR JSON RESPONSE:
 }
 
 ---
-EXAMPLE 2
+EXAMPLE 2 (no context)
 ---
-USER PROMPT:
-scroll down
+USER COMMAND:
+"scroll down"
 
 YOUR JSON RESPONSE:
 {
@@ -177,20 +176,24 @@ export const geminiService = {
         let retries = 0;
         let backoff = INITIAL_BACKOFF_MS;
         
-        // Construct the prompt with the user command and any context
-        let fullPrompt = command;
+        // Dynamically build the system instruction with context
+        let dynamicSystemInstruction = NLU_SYSTEM_INSTRUCTION_BASE;
         if (context?.userNames && context.userNames.length > 0) {
             const uniqueNames = [...new Set(context.userNames)]; // Ensure no duplicates
-            fullPrompt += `\navailable_user_names: [${uniqueNames.map(name => `"${name}"`).join(', ')}]`;
+            dynamicSystemInstruction += `\n\n---
+CONTEXTUAL AWARENESS:
+A list of available user names is provided below. When extracting a 'target_name' slot, you MUST use one of these exact names from the list. Do not guess or create new names.
+Available names: [${uniqueNames.map(name => `"${name}"`).join(', ')}]`;
         }
+
 
         while(retries < MAX_RETRIES) {
             try {
                 const response = await ai.models.generateContent({
                     model: "gemini-2.5-flash",
-                    contents: fullPrompt,
+                    contents: command, // Pass ONLY the user command here
                     config: {
-                      systemInstruction: NLU_SYSTEM_INSTRUCTION,
+                      systemInstruction: dynamicSystemInstruction, // Pass the context-aware instruction
                       responseMimeType: "application/json",
                     },
                 });
