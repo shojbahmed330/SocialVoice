@@ -10,6 +10,8 @@ interface MobileBottomNavProps {
     voiceState: VoiceState;
     onMicClick: () => void;
     onSendCommand: (command: string) => void;
+    commandInputValue: string;
+    setCommandInputValue: (value: string) => void;
 }
 
 const NavItem: React.FC<{
@@ -38,7 +40,7 @@ const NavItem: React.FC<{
 };
 
 
-const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ onNavigate, friendRequestCount, activeView, voiceState, onMicClick, onSendCommand }) => {
+const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ onNavigate, friendRequestCount, activeView, voiceState, onMicClick, onSendCommand, commandInputValue, setCommandInputValue }) => {
     return (
         <div className="fixed bottom-0 left-0 right-0 h-auto bg-slate-900/80 backdrop-blur-sm border-t border-slate-700 z-40 md:hidden flex flex-col">
             {/* The new, persistent command input bar for mobile */}
@@ -46,6 +48,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ onNavigate, friendReq
                 onSendCommand={onSendCommand}
                 voiceState={voiceState}
                 onMicClick={onMicClick}
+                value={commandInputValue}
+                onValueChange={setCommandInputValue}
             />
             {/* The 4-button navigation bar */}
             <div className="flex justify-around items-center h-16">

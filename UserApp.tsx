@@ -45,6 +45,7 @@ const UserApp: React.FC = () => {
   const [scrollState, setScrollState] = useState<ScrollState>('none');
   const [headerSearchQuery, setHeaderSearchQuery] = useState('');
   const [isLoadingFeed, setIsLoadingFeed] = useState(false);
+  const [commandInputValue, setCommandInputValue] = useState('');
   
   const notificationPanelRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null); // To hold the active speech recognition instance
@@ -69,6 +70,7 @@ const UserApp: React.FC = () => {
     setVoiceState(VoiceState.PROCESSING);
     setScrollState('none');
     setLastCommand(command);
+    setCommandInputValue('');
   }, []);
 
   const handleCommandProcessed = useCallback(() => {
@@ -110,12 +112,16 @@ const UserApp: React.FC = () => {
       return;
     }
 
-    if (voiceState === VoiceState.LISTENING && recognitionRef.current) {
-      recognitionRef.current.stop();
+    if (voiceState === VoiceState.LISTENING) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
       return;
     }
 
-    if (voiceState !== VoiceState.IDLE) return;
+    if (voiceState === VoiceState.PROCESSING) {
+      return;
+    }
 
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
@@ -127,12 +133,18 @@ const UserApp: React.FC = () => {
 
     recognition.onstart = () => {
       setVoiceState(VoiceState.LISTENING);
+      setCommandInputValue(''); // Clear previous text on new recording
       setTtsMessage("Listening...");
     };
 
     recognition.onend = () => {
       recognitionRef.current = null;
-      setVoiceState(VoiceState.IDLE);
+      setVoiceState(currentVoiceState => {
+        if (currentVoiceState === VoiceState.LISTENING) { // only if it wasn't stopped by a result
+            return VoiceState.IDLE;
+        }
+        return currentVoiceState;
+      });
     };
 
     recognition.onerror = (event: any) => {
@@ -142,17 +154,17 @@ const UserApp: React.FC = () => {
       } else {
         setTtsMessage("Sorry, I didn't catch that. Please try again.");
       }
-      setVoiceState(VoiceState.IDLE);
     };
 
     recognition.onresult = (event: any) => {
       const command = event.results[0][0].transcript;
-      setTtsMessage(`Heard: "${command}"`);
-      handleCommand(command);
+      setCommandInputValue(command); // Update the input field with the result
+      setTtsMessage(`Heard: "${command}". Press send to confirm.`);
+      setVoiceState(VoiceState.IDLE); // Return to idle so user can submit
     };
 
     recognition.start();
-  }, [voiceState, handleCommand]);
+  }, [voiceState, setCommandInputValue, setTtsMessage, setVoiceState]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -572,6 +584,8 @@ const UserApp: React.FC = () => {
                 onSendCommand={handleCommand} 
                 voiceState={voiceState}
                 onMicClick={handleMicClick}
+                value={commandInputValue}
+                onValueChange={setCommandInputValue}
             />
         </div>
       </footer>
@@ -584,6 +598,8 @@ const UserApp: React.FC = () => {
             voiceState={voiceState}
             onMicClick={handleMicClick}
             onSendCommand={handleCommand}
+            commandInputValue={commandInputValue}
+            setCommandInputValue={setCommandInputValue}
         />
       )}
 

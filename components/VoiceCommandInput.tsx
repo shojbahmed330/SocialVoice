@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import Icon from './Icon';
 import { VoiceState } from '../types';
 
@@ -7,21 +7,21 @@ interface VoiceCommandInputProps {
   onSendCommand: (command: string) => void;
   voiceState: VoiceState;
   onMicClick: () => void;
+  value: string;
+  onValueChange: (newValue: string) => void;
 }
 
-const VoiceCommandInput: React.FC<VoiceCommandInputProps> = ({ onSendCommand, voiceState, onMicClick }) => {
-  const [inputValue, setInputValue] = useState('');
+const VoiceCommandInput: React.FC<VoiceCommandInputProps> = ({ onSendCommand, voiceState, onMicClick, value, onValueChange }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputValue.trim()) {
-      onSendCommand(inputValue.trim());
-      setInputValue('');
+    if (value.trim()) {
+      onSendCommand(value.trim());
     }
   };
 
   const isListening = voiceState === VoiceState.LISTENING;
-  const hasText = inputValue.trim().length > 0;
+  const hasText = value.trim().length > 0;
 
   const getIndicatorColor = () => {
     switch (voiceState) {
@@ -42,8 +42,8 @@ const VoiceCommandInput: React.FC<VoiceCommandInputProps> = ({ onSendCommand, vo
         </div>
         <input
           type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          value={value}
+          onChange={(e) => onValueChange(e.target.value)}
           placeholder={isListening ? "Listening..." : "Say or type a command..."}
           className="bg-slate-900 border border-slate-700 text-slate-100 text-base rounded-lg focus:ring-rose-500 focus:border-rose-500 block w-full pl-11 pr-16 py-3 transition"
           disabled={isListening}
