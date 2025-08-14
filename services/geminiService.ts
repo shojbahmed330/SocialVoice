@@ -191,9 +191,9 @@ Available names: [${uniqueNames.map(name => `"${name}"`).join(', ')}]`;
             try {
                 const response = await ai.models.generateContent({
                     model: "gemini-2.5-flash",
-                    contents: command, // Pass ONLY the user command here
+                    contents: `USER COMMAND:\n"${command}"`, // FIX: Wrap the command to match the example format in the prompt
                     config: {
-                      systemInstruction: dynamicSystemInstruction, // Pass the context-aware instruction
+                      systemInstruction: dynamicSystemInstruction,
                       responseMimeType: "application/json",
                     },
                 });
