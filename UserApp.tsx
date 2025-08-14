@@ -25,21 +25,6 @@ import CampaignViewerModal from './components/CampaignViewerModal';
 import MobileBottomNav from './components/MobileBottomNav';
 
 
-// --- Web Speech API Setup ---
-const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-const recognition = SpeechRecognition ? new SpeechRecognition() : null;
-
-if (recognition) {
-  recognition.continuous = false;
-  // For maximum reliability, we are setting the language to English (US).
-  // The user can speak both Bengali and English, but forcing a language
-  // provides more consistent results than relying on browser defaults which has proven unstable.
-  recognition.lang = 'en-US';
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
-}
-// --------------------------
-
 interface ViewState {
   view: AppView;
   props?: any;
@@ -64,6 +49,7 @@ const UserApp: React.FC = () => {
   const [isLoadingFeed, setIsLoadingFeed] = useState(false);
   
   const notificationPanelRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null); // To hold the active speech recognition instance
   const currentView = viewStack[viewStack.length - 1];
   const unreadNotificationCount = notifications.filter(n => !n.read).length;
   const friendRequestCount = (currentView.props?.requests as User[] || []).length; // Used for badge on sidebar
@@ -119,49 +105,56 @@ const UserApp: React.FC = () => {
   }, [user, notifications.length]);
 
 
-  // --- Speech Recognition Effects ---
-  useEffect(() => {
-    if (!recognition) return;
+  const handleMicClick = useCallback(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setTtsMessage("Speech recognition is not supported in your browser.");
+      return;
+    }
+
+    if (voiceState === VoiceState.LISTENING && recognitionRef.current) {
+      recognitionRef.current.stop();
+      return;
+    }
+
+    if (voiceState !== VoiceState.IDLE) return;
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+
+    recognition.lang = 'en-US';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
       setVoiceState(VoiceState.LISTENING);
       setTtsMessage("Listening...");
     };
+
     recognition.onend = () => {
-      // This handles cases where recognition ends without a result (e.g., silence)
-      if(voiceState === VoiceState.LISTENING) {
-        setVoiceState(VoiceState.IDLE);
-        if (ttsMessage === "Listening...") {
-            setTtsMessage("Didn't catch that. Try again.");
-        }
-      }
+      recognitionRef.current = null;
+      setVoiceState(VoiceState.IDLE);
     };
+
     recognition.onerror = (event: any) => {
       console.error('Speech recognition error', event.error);
-      setVoiceState(VoiceState.IDLE);
-      if(event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        setTtsMessage("Microphone access denied. Please enable it in your browser settings.");
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setTtsMessage("Microphone access denied. Please enable it in browser settings.");
+      } else {
+        setTtsMessage("Sorry, I didn't catch that. Please try again.");
       }
+      setVoiceState(VoiceState.IDLE);
     };
+
     recognition.onresult = (event: any) => {
       const command = event.results[0][0].transcript;
-      // Provide immediate feedback to the user on what was heard
       setTtsMessage(`Heard: "${command}"`);
       handleCommand(command);
     };
-  }, [handleCommand, voiceState, ttsMessage]);
 
-  const handleMicClick = () => {
-    if (!recognition) {
-        alert("Speech recognition is not supported in your browser.");
-        return;
-    }
-    if (voiceState === VoiceState.LISTENING) {
-        recognition.stop();
-    } else {
-        recognition.start();
-    }
-  }
+    recognition.start();
+  }, [voiceState, handleCommand]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
