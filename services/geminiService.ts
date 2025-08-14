@@ -44,43 +44,17 @@ let MOCK_CAMPAIGNS: Campaign[] = [
 
 
 const NLU_SYSTEM_INSTRUCTION_BASE = `
-You are an NLU engine for VoiceBook, a voice-controlled social media app. Your task is to analyze the user's command and respond with a single, valid JSON object.
+You are a powerful NLU (Natural Language Understanding) engine for VoiceBook, a voice-controlled social media app. Your sole purpose is to analyze a user's raw text command and convert it into a structured JSON format.
 
-The JSON object MUST have an "intent" field and an optional "slots" object.
-The user might speak in English or Bengali.
+Your response MUST be a single, valid JSON object and nothing else.
 
-If the user's intent cannot be determined from the list below, the "intent" field in your JSON response must be "unknown".
+The JSON object must have:
+1. An "intent" field: A string matching one of the intents from the list below.
+2. An optional "slots" object: For intents that require extra information (like a name or number).
 
----
-EXAMPLE 1 (with context provided in system instructions)
----
-CONTEXT:
-Available names: ["Sumi Ahmed", "Shojib Khan", "Sharmin Chowdhury"]
+If the user's intent is unclear or not in the list, you MUST use the intent "unknown".
 
-USER COMMAND:
-"go to shojib's profile"
-
-YOUR JSON RESPONSE:
-{
-  "intent": "intent_open_profile",
-  "slots": {
-    "target_name": "Shojib Khan"
-  }
-}
-
----
-EXAMPLE 2 (no context)
----
-USER COMMAND:
-"scroll down"
-
-YOUR JSON RESPONSE:
-{
-  "intent": "intent_scroll_down"
-}
----
-
-Here is the complete list of available intents:
+--- INTENT LIST ---
 - intent_signup, intent_login
 - intent_play_post, intent_pause_post, intent_next_post, intent_previous_post
 - intent_create_post, intent_stop_recording, intent_post_confirm, intent_re_record
@@ -191,7 +165,7 @@ Available names: [${uniqueNames.map(name => `"${name}"`).join(', ')}]`;
             try {
                 const response = await ai.models.generateContent({
                     model: "gemini-2.5-flash",
-                    contents: `USER COMMAND:\n"${command}"`, // FIX: Wrap the command to match the example format in the prompt
+                    contents: command, // Pass the raw command directly to the model
                     config: {
                       systemInstruction: dynamicSystemInstruction,
                       responseMimeType: "application/json",

@@ -31,7 +31,10 @@ const recognition = SpeechRecognition ? new SpeechRecognition() : null;
 
 if (recognition) {
   recognition.continuous = false;
-  // REMOVED: recognition.lang = 'bn-BD'; This allows the browser to use its default language.
+  // For maximum reliability, we are setting the language to English (US).
+  // The user can speak both Bengali and English, but forcing a language
+  // provides more consistent results than relying on browser defaults which has proven unstable.
+  recognition.lang = 'en-US';
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
 }
