@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, Conversation } from '../types';
 import { geminiService } from '../services/geminiService';
@@ -11,6 +10,7 @@ interface ConversationsScreenProps {
   onOpenConversation: (peer: User) => void;
   onSetTtsMessage: (message: string) => void;
   lastCommand: string | null;
+  onCommandProcessed: () => void;
 }
 
 const ConversationItem: React.FC<{ conversation: Conversation; currentUserId: string; onClick: () => void }> = ({ conversation, currentUserId, onClick }) => {
@@ -46,7 +46,7 @@ const ConversationItem: React.FC<{ conversation: Conversation; currentUserId: st
 };
 
 
-const ConversationsScreen: React.FC<ConversationsScreenProps> = ({ currentUser, onOpenConversation, onSetTtsMessage, lastCommand }) => {
+const ConversationsScreen: React.FC<ConversationsScreenProps> = ({ currentUser, onOpenConversation, onSetTtsMessage, lastCommand, onCommandProcessed }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -63,22 +63,28 @@ const ConversationsScreen: React.FC<ConversationsScreenProps> = ({ currentUser, 
   }, [currentUser.id, onSetTtsMessage]);
 
   const handleCommand = useCallback(async (command: string) => {
-    if (!command || conversations.length === 0) return;
-    
-    // Use the context-aware intent processing
-    const userNames = conversations.map(c => c.peer.name);
-    const intentResponse = await geminiService.processIntent(command, { userNames });
+    try {
+        if (!command || conversations.length === 0) return;
+        
+        // Use the context-aware intent processing
+        const userNames = conversations.map(c => c.peer.name);
+        const intentResponse = await geminiService.processIntent(command, { userNames });
 
-    if (intentResponse.intent === 'intent_open_chat' && intentResponse.slots?.target_name) {
-        const targetName = intentResponse.slots.target_name as string;
-        const targetConversation = conversations.find(c => c.peer.name === targetName);
-        if (targetConversation) {
-            onOpenConversation(targetConversation.peer);
-        } else {
-            onSetTtsMessage(`I couldn't find a conversation with ${targetName}.`);
+        if (intentResponse.intent === 'intent_open_chat' && intentResponse.slots?.target_name) {
+            const targetName = intentResponse.slots.target_name as string;
+            const targetConversation = conversations.find(c => c.peer.name === targetName);
+            if (targetConversation) {
+                onOpenConversation(targetConversation.peer);
+            } else {
+                onSetTtsMessage(`I couldn't find a conversation with ${targetName}.`);
+            }
         }
+    } catch (error) {
+        console.error("Error processing command in ConversationsScreen:", error);
+    } finally {
+        onCommandProcessed();
     }
-  }, [conversations, onOpenConversation, onSetTtsMessage]);
+  }, [conversations, onOpenConversation, onSetTtsMessage, onCommandProcessed]);
 
   // Handle voice commands to open a chat
   useEffect(() => {

@@ -11,21 +11,28 @@ interface SearchResultsScreenProps {
   onSetTtsMessage: (message: string) => void;
   lastCommand: string | null;
   onOpenProfile: (userName: string) => void;
+  onCommandProcessed: () => void;
 }
 
-const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({ results, query, onSetTtsMessage, lastCommand, onOpenProfile }) => {
+const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({ results, query, onSetTtsMessage, lastCommand, onOpenProfile, onCommandProcessed }) => {
 
   const handleCommand = useCallback(async (command: string) => {
-    const intentResponse = await geminiService.processIntent(command);
-    if (intentResponse.intent === 'intent_select_result' && intentResponse.slots?.index) {
-      const index = Number(intentResponse.slots.index) - 1; // 1-based to 0-based
-      if (results[index]) {
-        onOpenProfile(results[index].name);
-      } else {
-        onSetTtsMessage(`Sorry, I couldn't find result number ${intentResponse.slots.index}.`);
-      }
+    try {
+        const intentResponse = await geminiService.processIntent(command);
+        if (intentResponse.intent === 'intent_select_result' && intentResponse.slots?.index) {
+          const index = Number(intentResponse.slots.index) - 1; // 1-based to 0-based
+          if (results[index]) {
+            onOpenProfile(results[index].name);
+          } else {
+            onSetTtsMessage(`Sorry, I couldn't find result number ${intentResponse.slots.index}.`);
+          }
+        }
+    } catch (error) {
+        console.error("Error processing command in SearchResultsScreen:", error);
+    } finally {
+        onCommandProcessed();
     }
-  }, [results, onOpenProfile, onSetTtsMessage]);
+  }, [results, onOpenProfile, onSetTtsMessage, onCommandProcessed]);
   
   useEffect(() => {
     if (lastCommand) {

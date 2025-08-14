@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { AuthMode, NLUResponse, User } from '../types';
 import { TTS_PROMPTS } from '../constants';
@@ -11,9 +10,10 @@ interface AuthScreenProps {
   ttsMessage: string;
   onSetTtsMessage: (message: string) => void;
   lastCommand: string | null;
+  onCommandProcessed: () => void;
 }
 
-const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess, ttsMessage, onSetTtsMessage, lastCommand }) => {
+const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess, ttsMessage, onSetTtsMessage, lastCommand, onCommandProcessed }) => {
   const [mode, setMode] = useState<AuthMode>(AuthMode.LOGIN);
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -98,20 +98,27 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess, ttsMessage, onSe
     if (!lastCommand) return;
     
     const processAuthCommand = async () => {
-        const intentResponse = await geminiService.processIntent(lastCommand);
-        if (intentResponse.intent === 'intent_login') {
-            setMode(AuthMode.LOGIN);
-            onSetTtsMessage(TTS_PROMPTS.login_name);
-        } else if (intentResponse.intent === 'intent_signup') {
-            setMode(AuthMode.SIGNUP_NAME);
-            onSetTtsMessage(TTS_PROMPTS.signup_name);
-        } else {
-             handleTextInput(lastCommand);
+        try {
+            const intentResponse = await geminiService.processIntent(lastCommand);
+            if (intentResponse.intent === 'intent_login') {
+                setMode(AuthMode.LOGIN);
+                onSetTtsMessage(TTS_PROMPTS.login_name);
+            } else if (intentResponse.intent === 'intent_signup') {
+                setMode(AuthMode.SIGNUP_NAME);
+                onSetTtsMessage(TTS_PROMPTS.signup_name);
+            } else {
+                 await handleTextInput(lastCommand);
+            }
+        } catch (error) {
+            console.error("Error processing auth command:", error);
+            onSetTtsMessage(TTS_PROMPTS.error_generic);
+        } finally {
+            onCommandProcessed();
         }
     };
     
     processAuthCommand();
-  }, [lastCommand, handleTextInput, onSetTtsMessage]);
+  }, [lastCommand, handleTextInput, onSetTtsMessage, onCommandProcessed]);
   
 
   return (

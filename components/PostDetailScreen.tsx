@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { Post, User, Comment, ScrollState } from '../types';
 import PostCard from './PostCard';
@@ -18,9 +17,10 @@ interface PostDetailScreenProps {
   onLikePost: (postId: string) => void;
   onOpenProfile: (userName: string) => void;
   scrollState: ScrollState;
+  onCommandProcessed: () => void;
 }
 
-const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ postId, newlyAddedCommentId, currentUser, onSetTtsMessage, lastCommand, onStartComment, onLikePost, onOpenProfile, scrollState }) => {
+const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ postId, newlyAddedCommentId, currentUser, onSetTtsMessage, lastCommand, onStartComment, onLikePost, onOpenProfile, scrollState, onCommandProcessed }) => {
   const [post, setPost] = useState<Post | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [playingCommentId, setPlayingCommentId] = useState<string | null>(null);
@@ -119,33 +119,39 @@ const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ postId, newlyAddedC
   }, [playingCommentId]);
 
   const handleCommand = useCallback(async (command: string) => {
-    const intentResponse = await geminiService.processIntent(command);
-    if (!post) return;
+    try {
+        const intentResponse = await geminiService.processIntent(command);
+        if (!post) return;
 
-    switch (intentResponse.intent) {
-        case 'intent_like':
-            onLikePost(post.id);
-            break;
-        case 'intent_comment':
-            onStartComment(post.id);
-            break;
-        case 'intent_play_comment_by_author':
-            if (intentResponse.slots?.target_name) {
-                const targetName = (intentResponse.slots.target_name as string).toLowerCase();
-                const commentToPlay = post.comments.find(c => 
-                    c.author.name.toLowerCase().includes(targetName)
-                );
-                
-                if (commentToPlay) {
-                    handlePlayComment(commentToPlay);
-                    onSetTtsMessage(`Playing comment from ${commentToPlay.author.name}.`);
-                } else {
-                    onSetTtsMessage(`Sorry, I couldn't find a comment from ${targetName} on this post.`);
+        switch (intentResponse.intent) {
+            case 'intent_like':
+                onLikePost(post.id);
+                break;
+            case 'intent_comment':
+                onStartComment(post.id);
+                break;
+            case 'intent_play_comment_by_author':
+                if (intentResponse.slots?.target_name) {
+                    const targetName = (intentResponse.slots.target_name as string).toLowerCase();
+                    const commentToPlay = post.comments.find(c => 
+                        c.author.name.toLowerCase().includes(targetName)
+                    );
+                    
+                    if (commentToPlay) {
+                        handlePlayComment(commentToPlay);
+                        onSetTtsMessage(`Playing comment from ${commentToPlay.author.name}.`);
+                    } else {
+                        onSetTtsMessage(`Sorry, I couldn't find a comment from ${targetName} on this post.`);
+                    }
                 }
-            }
-            break;
+                break;
+        }
+    } catch (error) {
+        console.error("Error processing command in PostDetailScreen:", error);
+    } finally {
+        onCommandProcessed();
     }
-  }, [post, onLikePost, onStartComment, handlePlayComment, onSetTtsMessage]);
+  }, [post, onLikePost, onStartComment, handlePlayComment, onSetTtsMessage, onCommandProcessed]);
 
   useEffect(() => {
     if (lastCommand) {

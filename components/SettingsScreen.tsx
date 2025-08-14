@@ -12,9 +12,10 @@ interface SettingsScreenProps {
   lastCommand: string | null;
   onSetTtsMessage: (message: string) => void;
   scrollState: ScrollState;
+  onCommandProcessed: () => void;
 }
 
-const SettingsScreen: React.FC<SettingsScreenProps> = ({ currentUser, onUpdateSettings, onUnblockUser, lastCommand, onSetTtsMessage, scrollState }) => {
+const SettingsScreen: React.FC<SettingsScreenProps> = ({ currentUser, onUpdateSettings, onUnblockUser, lastCommand, onSetTtsMessage, scrollState, onCommandProcessed }) => {
   // Profile info state
   const [name, setName] = useState(currentUser.name);
   const [bio, setBio] = useState(currentUser.bio);
@@ -88,57 +89,63 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ currentUser, onUpdateSe
   }, [name, bio, work, education, currentCity, hometown, relationshipStatus, postVisibility, friendRequestPrivacy, onUpdateSettings]);
 
   const handleCommand = useCallback(async (command: string) => {
-    const intentResponse = await geminiService.processIntent(command);
+    try {
+        const intentResponse = await geminiService.processIntent(command);
 
-    switch(intentResponse.intent) {
-        case 'intent_save_settings':
-            handleSave();
-            break;
-        case 'intent_update_profile':
-            if (intentResponse.slots?.field && intentResponse.slots?.value) {
-                const { field, value } = intentResponse.slots;
-                if (typeof value !== 'string') return;
-                
-                const fieldSetterMap: Record<string, (val: string) => void> = {
-                    name: setName,
-                    bio: setBio,
-                    work: setWork,
-                    education: setEducation,
-                    hometown: setHometown,
-                    currentCity: setCurrentCity,
-                    relationshipStatus: setRelationshipStatus as (val:string) => void,
-                };
+        switch(intentResponse.intent) {
+            case 'intent_save_settings':
+                handleSave();
+                break;
+            case 'intent_update_profile':
+                if (intentResponse.slots?.field && intentResponse.slots?.value) {
+                    const { field, value } = intentResponse.slots;
+                    if (typeof value !== 'string') return;
+                    
+                    const fieldSetterMap: Record<string, (val: string) => void> = {
+                        name: setName,
+                        bio: setBio,
+                        work: setWork,
+                        education: setEducation,
+                        hometown: setHometown,
+                        currentCity: setCurrentCity,
+                        relationshipStatus: setRelationshipStatus as (val:string) => void,
+                    };
 
-                const setter = fieldSetterMap[field as string];
-                if(setter) {
-                    setter(value);
-                    onSetTtsMessage(`${field} updated. Say "save settings" to confirm.`);
+                    const setter = fieldSetterMap[field as string];
+                    if(setter) {
+                        setter(value);
+                        onSetTtsMessage(`${field} updated. Say "save settings" to confirm.`);
+                    }
                 }
-            }
-            break;
-        case 'intent_update_privacy':
-             if (intentResponse.slots?.setting && intentResponse.slots?.value) {
-                const { setting, value } = intentResponse.slots;
-                if (setting === 'postVisibility' && (value === 'public' || value === 'friends')) {
-                    setPostVisibility(value);
-                    onSetTtsMessage(TTS_PROMPTS.privacy_setting_updated('Post visibility', value));
-                } else if (setting === 'friendRequestPrivacy' && (value === 'everyone' || value === 'friends_of_friends')) {
-                    setFriendRequestPrivacy(value);
-                    onSetTtsMessage(TTS_PROMPTS.privacy_setting_updated('Friend request privacy', value));
+                break;
+            case 'intent_update_privacy':
+                 if (intentResponse.slots?.setting && intentResponse.slots?.value) {
+                    const { setting, value } = intentResponse.slots;
+                    if (setting === 'postVisibility' && (value === 'public' || value === 'friends')) {
+                        setPostVisibility(value);
+                        onSetTtsMessage(TTS_PROMPTS.privacy_setting_updated('Post visibility', value));
+                    } else if (setting === 'friendRequestPrivacy' && (value === 'everyone' || value === 'friends_of_friends')) {
+                        setFriendRequestPrivacy(value);
+                        onSetTtsMessage(TTS_PROMPTS.privacy_setting_updated('Friend request privacy', value));
+                    }
                 }
-            }
-            break;
-        case 'intent_unblock_user':
-            if (intentResponse.slots?.target_name) {
-                const targetName = intentResponse.slots.target_name as string;
-                const userToUnblock = blockedUsers.find(u => u.name.toLowerCase() === targetName.toLowerCase());
-                if (userToUnblock) {
-                    onUnblockUser(userToUnblock);
+                break;
+            case 'intent_unblock_user':
+                if (intentResponse.slots?.target_name) {
+                    const targetName = intentResponse.slots.target_name as string;
+                    const userToUnblock = blockedUsers.find(u => u.name.toLowerCase() === targetName.toLowerCase());
+                    if (userToUnblock) {
+                        onUnblockUser(userToUnblock);
+                    }
                 }
-            }
-            break;
+                break;
+        }
+    } catch (error) {
+        console.error("Error processing command in SettingsScreen:", error);
+    } finally {
+        onCommandProcessed();
     }
-  }, [handleSave, onSetTtsMessage, blockedUsers, onUnblockUser]);
+  }, [handleSave, onSetTtsMessage, blockedUsers, onUnblockUser, onCommandProcessed]);
 
   useEffect(() => {
     if(lastCommand) {

@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { User, ScrollState, FriendshipStatus, AppView } from '../types';
 import { geminiService } from '../services/geminiService';

@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RecordingState, User, Comment } from '../types';
 import { TTS_PROMPTS } from '../constants';
@@ -12,9 +11,10 @@ interface CreateCommentScreenProps {
   onCommentPosted: (newComment: Comment | null, postId: string) => void;
   onSetTtsMessage: (message: string) => void;
   lastCommand: string | null;
+  onCommandProcessed: () => void;
 }
 
-const CreateCommentScreen: React.FC<CreateCommentScreenProps> = ({ user, postId, onCommentPosted, onSetTtsMessage, lastCommand }) => {
+const CreateCommentScreen: React.FC<CreateCommentScreenProps> = ({ user, postId, onCommentPosted, onSetTtsMessage, lastCommand, onCommandProcessed }) => {
   const [recordingState, setRecordingState] = useState<RecordingState>(RecordingState.IDLE);
   const [duration, setDuration] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -67,19 +67,25 @@ const CreateCommentScreen: React.FC<CreateCommentScreenProps> = ({ user, postId,
   }, []);
 
   const handleCommand = useCallback(async (command: string) => {
-    const intentResponse = await geminiService.processIntent(command);
-    const lowerCommand = command.toLowerCase();
+    try {
+        const intentResponse = await geminiService.processIntent(command);
+        const lowerCommand = command.toLowerCase();
 
-    if (recordingState === RecordingState.RECORDING && (intentResponse.intent === 'intent_stop_recording' || lowerCommand === 'stop')) {
-        stopRecording();
-    } else if (recordingState === RecordingState.PREVIEW) {
-        if (intentResponse.intent === 'intent_post_comment' || lowerCommand === 'post') {
-            postComment();
-        } else if (intentResponse.intent === 'intent_re_record') {
-            startRecording();
+        if (recordingState === RecordingState.RECORDING && (intentResponse.intent === 'intent_stop_recording' || lowerCommand === 'stop')) {
+            stopRecording();
+        } else if (recordingState === RecordingState.PREVIEW) {
+            if (intentResponse.intent === 'intent_post_comment' || lowerCommand === 'post') {
+                postComment();
+            } else if (intentResponse.intent === 'intent_re_record') {
+                startRecording();
+            }
         }
+    } catch (error) {
+        console.error("Error processing command in CreateCommentScreen:", error);
+    } finally {
+        onCommandProcessed();
     }
-  }, [recordingState, stopRecording, postComment, startRecording]);
+  }, [recordingState, stopRecording, postComment, startRecording, onCommandProcessed]);
 
   useEffect(() => {
     if (lastCommand) {

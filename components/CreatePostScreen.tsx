@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RecordingState, User, Post } from '../types';
 import { TTS_PROMPTS, IMAGE_GENERATION_COST } from '../constants';
@@ -13,9 +12,10 @@ interface CreatePostScreenProps {
   onSetTtsMessage: (message: string) => void;
   lastCommand: string | null;
   onDeductCoinsForImage: () => Promise<boolean>;
+  onCommandProcessed: () => void;
 }
 
-const CreatePostScreen: React.FC<CreatePostScreenProps> = ({ user, onPostCreated, onSetTtsMessage, lastCommand, onDeductCoinsForImage }) => {
+const CreatePostScreen: React.FC<CreatePostScreenProps> = ({ user, onPostCreated, onSetTtsMessage, lastCommand, onDeductCoinsForImage, onCommandProcessed }) => {
   const [recordingState, setRecordingState] = useState<RecordingState>(RecordingState.IDLE);
   const [duration, setDuration] = useState(0);
   const [caption, setCaption] = useState('');
@@ -116,41 +116,47 @@ const CreatePostScreen: React.FC<CreatePostScreenProps> = ({ user, onPostCreated
     if (!lastCommand) return;
     
     const processCommand = async () => {
-        const intentResponse = await geminiService.processIntent(lastCommand);
-        
-        switch(intentResponse.intent) {
-            case 'intent_create_post': 
-                handleStartRecording();
-                break;
-            case 'intent_stop_recording':
-                if (recordingState === RecordingState.RECORDING) handleStopRecording();
-                break;
-            case 'intent_re_record':
-                 if (recordingState === RecordingState.PREVIEW) {
-                     setDuration(0);
-                     handleStartRecording();
-                 }
-                 break;
-            case 'intent_post_confirm':
-                handlePost();
-                break;
-            case 'intent_generate_image':
-                if (intentResponse.slots?.prompt) {
-                    const promptText = intentResponse.slots.prompt as string;
-                    setImagePrompt(promptText);
-                    // This function will be called again due to state change, so we trigger generation here.
-                    // Using a timeout to ensure state is set before calling.
-                    setTimeout(() => handleGenerateImage(), 100);
-                }
-                break;
-            case 'intent_clear_image':
-                handleClearImage();
-                break;
+        try {
+            const intentResponse = await geminiService.processIntent(lastCommand);
+            
+            switch(intentResponse.intent) {
+                case 'intent_create_post': 
+                    handleStartRecording();
+                    break;
+                case 'intent_stop_recording':
+                    if (recordingState === RecordingState.RECORDING) handleStopRecording();
+                    break;
+                case 'intent_re_record':
+                     if (recordingState === RecordingState.PREVIEW) {
+                         setDuration(0);
+                         handleStartRecording();
+                     }
+                     break;
+                case 'intent_post_confirm':
+                    handlePost();
+                    break;
+                case 'intent_generate_image':
+                    if (intentResponse.slots?.prompt) {
+                        const promptText = intentResponse.slots.prompt as string;
+                        setImagePrompt(promptText);
+                        // This function will be called again due to state change, so we trigger generation here.
+                        // Using a timeout to ensure state is set before calling.
+                        setTimeout(() => handleGenerateImage(), 100);
+                    }
+                    break;
+                case 'intent_clear_image':
+                    handleClearImage();
+                    break;
+            }
+        } catch (error) {
+            console.error("Error processing command in CreatePostScreen:", error);
+        } finally {
+            onCommandProcessed();
         }
     };
     
     processCommand();
-  }, [lastCommand, recordingState, handleStartRecording, handleStopRecording, handlePost, handleGenerateImage, handleClearImage]);
+  }, [lastCommand, recordingState, handleStartRecording, handleStopRecording, handlePost, handleGenerateImage, handleClearImage, onCommandProcessed]);
 
   const canAffordImage = (user.voiceCoins || 0) >= IMAGE_GENERATION_COST;
 

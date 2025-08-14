@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { User, Campaign } from '../types';
 import { geminiService } from '../services/geminiService';
@@ -11,6 +10,7 @@ interface SponsorCenterScreenProps {
   currentUser: User;
   onSetTtsMessage: (message: string) => void;
   lastCommand: string | null;
+  onCommandProcessed: () => void;
 }
 
 type MediaType = 'image' | 'video' | 'audio';
@@ -27,7 +27,7 @@ const StatCard: React.FC<{ title: string, value: string, iconName: React.Compone
     </div>
 );
 
-const SponsorCenterScreen: React.FC<SponsorCenterScreenProps> = ({ currentUser, onSetTtsMessage, lastCommand }) => {
+const SponsorCenterScreen: React.FC<SponsorCenterScreenProps> = ({ currentUser, onSetTtsMessage, lastCommand, onCommandProcessed }) => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'create'>('dashboard');
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -64,51 +64,56 @@ const SponsorCenterScreen: React.FC<SponsorCenterScreenProps> = ({ currentUser, 
     }, [onSetTtsMessage, fetchCampaigns]);
     
     const handleCommand = useCallback(async (command: string) => {
-        const intentResponse = await geminiService.processIntent(command);
-        const { intent, slots } = intentResponse;
+        try {
+            const intentResponse = await geminiService.processIntent(command);
+            const { intent, slots } = intentResponse;
 
-        switch (intent) {
-            case 'intent_create_campaign':
-                setActiveTab('create');
-                onSetTtsMessage("Okay, let's create a new campaign. You can say 'set sponsor name', 'set budget', 'set caption', or 'set media type'.");
-                break;
-            case 'intent_view_campaign_dashboard':
-                setActiveTab('dashboard');
-                onSetTtsMessage("Viewing your campaign dashboard.");
-                break;
-            case 'intent_set_sponsor_name':
-                if (slots?.sponsor_name && typeof slots.sponsor_name === 'string') {
-                    setSponsorName(slots.sponsor_name);
-                    onSetTtsMessage(`Sponsor name set to: ${slots.sponsor_name}`);
-                }
-                break;
-            case 'intent_set_campaign_caption':
-                if (slots?.caption_text && typeof slots.caption_text === 'string') {
-                    setCaption(slots.caption_text);
-                    onSetTtsMessage(`Campaign caption has been set.`);
-                }
-                break;
-            case 'intent_set_campaign_budget':
-                 if (slots?.budget_amount) {
-                    const newBudget = String(slots.budget_amount).replace(/[^0-9]/g, '');
-                    setBudget(newBudget);
-                    onSetTtsMessage(`Budget set to ${newBudget} Taka.`);
-                }
-                break;
-            case 'intent_set_media_type':
-                const newType = slots?.media_type as MediaType;
-                if (newType && ['image', 'video', 'audio'].includes(newType)) {
-                    setMediaType(newType);
-                    onSetTtsMessage(`Media type set to ${newType}. Please click to upload the file manually.`);
-                }
-                break;
-            case 'intent_launch_campaign':
-                 onSetTtsMessage("Attempting to launch the campaign...");
-                 submitButtonRef.current?.click();
-                 break;
+            switch (intent) {
+                case 'intent_create_campaign':
+                    setActiveTab('create');
+                    onSetTtsMessage("Okay, let's create a new campaign. You can say 'set sponsor name', 'set budget', 'set caption', or 'set media type'.");
+                    break;
+                case 'intent_view_campaign_dashboard':
+                    setActiveTab('dashboard');
+                    onSetTtsMessage("Viewing your campaign dashboard.");
+                    break;
+                case 'intent_set_sponsor_name':
+                    if (slots?.sponsor_name && typeof slots.sponsor_name === 'string') {
+                        setSponsorName(slots.sponsor_name);
+                        onSetTtsMessage(`Sponsor name set to: ${slots.sponsor_name}`);
+                    }
+                    break;
+                case 'intent_set_campaign_caption':
+                    if (slots?.caption_text && typeof slots.caption_text === 'string') {
+                        setCaption(slots.caption_text);
+                        onSetTtsMessage(`Campaign caption has been set.`);
+                    }
+                    break;
+                case 'intent_set_campaign_budget':
+                     if (slots?.budget_amount) {
+                        const newBudget = String(slots.budget_amount).replace(/[^0-9]/g, '');
+                        setBudget(newBudget);
+                        onSetTtsMessage(`Budget set to ${newBudget} Taka.`);
+                    }
+                    break;
+                case 'intent_set_media_type':
+                    const newType = slots?.media_type as MediaType;
+                    if (newType && ['image', 'video', 'audio'].includes(newType)) {
+                        setMediaType(newType);
+                        onSetTtsMessage(`Media type set to ${newType}. Please click to upload the file manually.`);
+                    }
+                    break;
+                case 'intent_launch_campaign':
+                     onSetTtsMessage("Attempting to launch the campaign...");
+                     submitButtonRef.current?.click();
+                     break;
+            }
+        } catch (error) {
+            console.error("Error processing command in SponsorCenterScreen:", error);
+        } finally {
+            onCommandProcessed();
         }
-
-    }, [onSetTtsMessage]);
+    }, [onSetTtsMessage, onCommandProcessed]);
 
     useEffect(() => {
         if(lastCommand) {

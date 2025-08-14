@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppView, User, VoiceState, Post, Comment, ScrollState, Notification, Campaign } from './types';
 import AuthScreen from './components/AuthScreen';
@@ -445,7 +446,7 @@ const UserApp: React.FC = () => {
   const renderView = () => {
     if(!user && currentView.view !== AppView.AUTH) {
         setViewStack([{ view: AppView.AUTH }]);
-        return <AuthScreen onAuthSuccess={handleAuthSuccess} ttsMessage={ttsMessage} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand}/>
+        return <AuthScreen onAuthSuccess={handleAuthSuccess} ttsMessage={ttsMessage} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} onCommandProcessed={handleCommandProcessed} />
     }
 
     const commonScreenProps = {
@@ -465,7 +466,7 @@ const UserApp: React.FC = () => {
 
     switch (currentView.view) {
       case AppView.AUTH:
-        return <AuthScreen onAuthSuccess={handleAuthSuccess} ttsMessage={ttsMessage} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} />;
+        return <AuthScreen onAuthSuccess={handleAuthSuccess} ttsMessage={ttsMessage} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} onCommandProcessed={handleCommandProcessed} />;
       case AppView.FEED:
         return <FeedScreen {...commonScreenProps} isLoading={isLoadingFeed} posts={posts} onViewPost={handleViewPost} onLikePost={handleLikePost} onStartCreatePost={handleStartCreatePost} onRewardedAdClick={handleRewardedAdClick} onAdViewed={handleAdViewed} onAdClick={handleAdClick} />;
       case AppView.PROFILE:

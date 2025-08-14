@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { User, Message, RecordingState, ScrollState, ChatTheme } from '../types';
 import { geminiService } from '../services/geminiService';
@@ -15,6 +14,7 @@ interface MessageScreenProps {
   scrollState: ScrollState;
   onBlockUser: (user: User) => void;
   onGoBack: () => void;
+  onCommandProcessed: () => void;
 }
 
 const DateSeparator = ({ date, className }: { date: string, className?: string }) => {
@@ -54,7 +54,7 @@ const useOnClickOutside = (ref: React.RefObject<HTMLElement>, handler: (event: M
     }, [ref, handler]);
 };
 
-const MessageScreen: React.FC<MessageScreenProps> = ({ currentUser, recipientUser, onSetTtsMessage, lastCommand, scrollState, onBlockUser, onGoBack }) => {
+const MessageScreen: React.FC<MessageScreenProps> = ({ currentUser, recipientUser, onSetTtsMessage, lastCommand, scrollState, onBlockUser, onGoBack, onCommandProcessed }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [recordingState, setRecordingState] = useState<RecordingState>(RecordingState.IDLE);
@@ -171,22 +171,28 @@ const MessageScreen: React.FC<MessageScreenProps> = ({ currentUser, recipientUse
   }
 
   const handleCommand = useCallback(async (command: string) => {
-    const intentResponse = await geminiService.processIntent(command);
-    
-    switch(intentResponse.intent) {
-        case 'intent_record_message': if (recordingState === RecordingState.IDLE) startRecording(); break;
-        case 'intent_stop_recording': if (recordingState === RecordingState.RECORDING) stopRecording(); break;
-        case 'intent_send_chat_message': if (recordingState === RecordingState.PREVIEW) sendMessage(); break;
-        case 'intent_re_record': if (recordingState === RecordingState.PREVIEW) startRecording(); break;
-        case 'intent_delete_chat': handleDeleteChat(); break;
-        case 'intent_change_chat_theme':
-            const themeName = (intentResponse.slots?.theme_name as string)?.toLowerCase();
-            if (themeName && themeName in CHAT_THEMES) {
-                handleThemeChange(themeName as ChatTheme);
-            }
-            break;
+    try {
+        const intentResponse = await geminiService.processIntent(command);
+        
+        switch(intentResponse.intent) {
+            case 'intent_record_message': if (recordingState === RecordingState.IDLE) startRecording(); break;
+            case 'intent_stop_recording': if (recordingState === RecordingState.RECORDING) stopRecording(); break;
+            case 'intent_send_chat_message': if (recordingState === RecordingState.PREVIEW) sendMessage(); break;
+            case 'intent_re_record': if (recordingState === RecordingState.PREVIEW) startRecording(); break;
+            case 'intent_delete_chat': handleDeleteChat(); break;
+            case 'intent_change_chat_theme':
+                const themeName = (intentResponse.slots?.theme_name as string)?.toLowerCase();
+                if (themeName && themeName in CHAT_THEMES) {
+                    handleThemeChange(themeName as ChatTheme);
+                }
+                break;
+        }
+    } catch (error) {
+        console.error("Error processing command in MessageScreen:", error);
+    } finally {
+        onCommandProcessed();
     }
-  }, [recordingState, startRecording, stopRecording, sendMessage, handleDeleteChat, handleThemeChange]);
+  }, [recordingState, startRecording, stopRecording, sendMessage, handleDeleteChat, handleThemeChange, onCommandProcessed]);
 
   useEffect(() => { if(lastCommand) handleCommand(lastCommand); }, [lastCommand, handleCommand]);
   useEffect(() => () => { stopTimer(); if (playbackTimeoutRef.current) clearTimeout(playbackTimeoutRef.current); }, []);
@@ -232,75 +238,83 @@ const MessageScreen: React.FC<MessageScreenProps> = ({ currentUser, recipientUse
   const theme = CHAT_THEMES[currentTheme] || CHAT_THEMES.default;
 
   return (
-    <div className={`h-full w-full flex flex-col bg-gradient-to-b ${theme.bgGradient} transition-all duration-500`}>
-       <div className={`flex-shrink-0 p-3 flex items-center gap-3 border-b border-white/10 relative ${theme.headerText}`}>
-            <button onClick={onGoBack} aria-label="Go back" className="p-2 rounded-full hover:bg-black/20 transition-colors"><Icon name="back" className="w-6 h-6"/></button>
-            <img src={recipientUser.avatarUrl} alt={recipientUser.name} className="w-10 h-10 rounded-full" />
-            <span className="font-bold text-lg">{recipientUser.name}</span>
-            <div ref={menuRef} className="ml-auto relative">
-                <button onClick={() => setMenuOpen(o => !o)} className="p-2 rounded-full hover:bg-black/20 transition-colors"><Icon name="ellipsis-vertical" className="w-6 h-6" /></button>
+    <div className={`h-full flex flex-col bg-slate-900 ${theme.bgGradient}`}>
+        {/* Header */}
+        <header className="flex-shrink-0 flex items-center justify-between p-3 border-b border-white/10 bg-black/20 backdrop-blur-sm z-10">
+            <div className="flex items-center gap-3">
+                <button onClick={onGoBack} className={`p-2 rounded-full hover:bg-white/10 ${theme.headerText}`}><Icon name="back" className="w-6 h-6"/></button>
+                <img src={recipientUser.avatarUrl} alt={recipientUser.name} className="w-10 h-10 rounded-full"/>
+                <div>
+                    <p className={`font-bold text-lg ${theme.headerText}`}>{recipientUser.name}</p>
+                </div>
+            </div>
+            <div className="relative" ref={menuRef}>
+                <button onClick={() => setMenuOpen(p => !p)} className={`p-2 rounded-full hover:bg-white/10 ${theme.headerText}`}><Icon name="ellipsis-vertical" className="w-6 h-6"/></button>
                 {isMenuOpen && (
-                    <div className="absolute top-full right-0 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl z-50 text-white overflow-hidden animate-fade-in-fast">
+                    <div className="absolute top-full right-0 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl z-20 text-white overflow-hidden animate-fade-in-fast">
                        {isThemePickerOpen ? (
                            <div>
-                                <button onClick={() => setThemePickerOpen(false)} className="flex items-center gap-2 p-2 text-sm text-slate-400 hover:text-white w-full hover:bg-slate-700/50">
-                                   <Icon name="back" className="w-4 h-4"/> Back to menu
+                                <button onClick={() => setThemePickerOpen(false)} className="w-full text-left p-3 flex items-center gap-3 hover:bg-slate-700/50">
+                                    <Icon name="back" className="w-5 h-5"/> Back
                                 </button>
-                               <h4 className="px-3 py-1 font-semibold text-slate-300">Change Theme</h4>
-                               <div className="p-3 grid grid-cols-5 gap-3">
-                                   {Object.keys(CHAT_THEMES).map(key => (
-                                       <button key={key} onClick={() => handleThemeChange(key as ChatTheme)} title={CHAT_THEMES[key as ChatTheme].name} className={`w-10 h-10 rounded-full bg-gradient-to-br ${CHAT_THEMES[key as ChatTheme].bgGradient} border-2 ${currentTheme === key ? 'border-rose-500' : 'border-transparent'} transition-all`}></button>
-                                   ))}
-                               </div>
+                                <div className="border-t border-slate-700">
+                                    {Object.entries(CHAT_THEMES).map(([key, value]) => (
+                                        <button key={key} onClick={() => handleThemeChange(key as ChatTheme)} className="w-full text-left p-3 flex items-center gap-3 hover:bg-slate-700/50">
+                                            <div className={`w-5 h-5 rounded-full ${value.bgGradient}`}></div>
+                                            {value.name}
+                                            {currentTheme === key && <Icon name="logo" className="w-5 h-5 text-rose-500 ml-auto"/>}
+                                        </button>
+                                    ))}
+                                </div>
                            </div>
                        ) : (
-                        <ul className="py-1">
-                            <li onClick={() => setThemePickerOpen(true)} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-700/50 cursor-pointer"><Icon name="swatch" className="w-5 h-5 text-slate-400" /><span>Theme</span></li>
-                            <li className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-700/50 cursor-pointer opacity-50"><Icon name="bell" className="w-5 h-5 text-slate-400" /><span>Notifications</span></li>
-                            <li className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-700/50 cursor-pointer opacity-50"><Icon name="speaker-wave" className="w-5 h-5 text-slate-400" /><span>Sound</span></li>
-                            <div className="my-1 h-px bg-slate-700"></div>
-                            <li onClick={handleBlock} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-700/50 cursor-pointer"><Icon name="user-slash" className="w-5 h-5 text-slate-400" /><span>Block</span></li>
-                            <li onClick={handleDeleteChat} className="flex items-center gap-3 px-3 py-2.5 text-red-400 hover:bg-red-500/20 cursor-pointer"><Icon name="trash" className="w-5 h-5" /><span>Delete Chat</span></li>
-                        </ul>
+                           <ul>
+                               <li><button onClick={() => { setMenuOpen(false); onBlockUser(recipientUser);}} className="w-full text-left p-3 flex items-center gap-3 hover:bg-slate-700/50"><Icon name="user-slash" className="w-5 h-5"/> Block User</button></li>
+                               <li><button onClick={() => setThemePickerOpen(true)} className="w-full text-left p-3 flex items-center gap-3 hover:bg-slate-700/50"><Icon name="swatch" className="w-5 h-5"/> Change Theme</button></li>
+                               <li><button onClick={handleDeleteChat} className="w-full text-left p-3 flex items-center gap-3 text-red-400 hover:bg-red-500/10"><Icon name="trash" className="w-5 h-5"/> Delete Chat</button></li>
+                           </ul>
                        )}
                     </div>
                 )}
             </div>
-       </div>
-      <div ref={messageContainerRef} className="flex-grow overflow-y-auto p-4">
-        <div className="flex flex-col gap-1">
-            {messages.map((msg, index) => {
-               const isSender = msg.senderId === currentUser.id;
-               const sentAt = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-               const showDateSeparator = index === 0 || new Date(messages[index - 1].createdAt).toDateString() !== new Date(msg.createdAt).toDateString();
-               const bubbleClass = isSender ? theme.myBubble : theme.theirBubble;
+        </header>
 
-               return (
-                 <React.Fragment key={msg.id}>
-                    {showDateSeparator && <DateSeparator date={msg.createdAt} className={theme.text === 'text-black' ? 'text-gray-500' : 'text-slate-400'} />}
-                    <div className={`flex items-end gap-2 ${isSender ? 'justify-end' : 'justify-start'}`}>
-                        {!isSender && <img src={recipientUser.avatarUrl} alt={recipientUser.name} className="w-8 h-8 rounded-full self-end mb-2" />}
-                        <div className={`flex flex-col ${isSender ? 'items-end' : 'items-start'}`}>
-                            <button onClick={() => handlePlayMessage(msg)} className={`max-w-xs lg:max-w-md p-3 rounded-2xl flex items-center gap-3 transition-colors ${theme.text} ${bubbleClass} ${isSender ? 'rounded-br-none' : 'rounded-bl-none'} `}>
-                                <Icon name={playingMessageId === msg.id ? 'pause' : 'play'} className="w-6 h-6 flex-shrink-0" />
-                                <div className="h-10 w-40"><Waveform isPlaying={playingMessageId === msg.id} isRecording={false} barCount={20} /></div>
-                                <span className="text-sm font-mono self-end">{msg.duration}s</span>
+        {/* Messages */}
+        <div ref={messageContainerRef} className="flex-grow overflow-y-auto p-4 space-y-2">
+            {messages.map((msg, index) => {
+                const isMine = msg.senderId === currentUser.id;
+                const prevMsg = messages[index - 1];
+                const showDate = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+                
+                return (
+                    <React.Fragment key={msg.id}>
+                        {showDate && <DateSeparator date={msg.createdAt} className={theme.text} />}
+                        <div className={`flex items-end gap-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
+                            {!isMine && <img src={recipientUser.avatarUrl} alt="" className="w-7 h-7 rounded-full self-end mb-1"/>}
+                            <button
+                                onClick={() => handlePlayMessage(msg)}
+                                className={`max-w-xs p-2 rounded-2xl flex items-center gap-3 text-left transition-colors ${isMine ? `${theme.myBubble} rounded-br-md` : `${theme.theirBubble} rounded-bl-md`} ${theme.text}`}
+                            >
+                                <Icon name={playingMessageId === msg.id ? 'pause' : 'play'} className="w-5 h-5 flex-shrink-0" />
+                                <div className="h-8 flex-grow min-w-[100px]"><Waveform isPlaying={playingMessageId === msg.id} barCount={15} /></div>
+                                <span className="text-xs font-mono self-end pb-0.5">{msg.duration}s</span>
                             </button>
-                            <p className={`text-xs mt-1 px-2 ${theme.text === 'text-black' ? 'text-gray-600' : 'text-slate-400'}`}>{sentAt}</p>
                         </div>
-                    </div>
-                    {(index === myLastMessageIndex && showSeenIndicator) && (
-                        <div className={`text-right text-xs mt-1 pr-2 ${theme.text === 'text-black' ? 'text-gray-600' : 'text-slate-400'}`}>Seen</div>
-                    )}
-                 </React.Fragment>
-               )
+                    </React.Fragment>
+                );
             })}
+             {showSeenIndicator && (
+                <div className="text-right text-xs pr-9 text-slate-400">
+                    Seen
+                </div>
+            )}
+            <div ref={chatEndRef}></div>
         </div>
-        <div ref={chatEndRef} />
-      </div>
-      <div className="flex-shrink-0 p-4 bg-black/20 border-t border-white/10">
-        {renderFooter()}
-      </div>
+
+        {/* Footer */}
+        <footer className={`flex-shrink-0 p-3 border-t border-white/10 bg-black/20 backdrop-blur-sm z-10`}>
+           {renderFooter()}
+        </footer>
     </div>
   );
 };
