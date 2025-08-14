@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppView, User, VoiceState, Post, Comment, ScrollState, Notification, Campaign } from './types';
 import AuthScreen from './components/AuthScreen';
@@ -568,6 +566,7 @@ const UserApp: React.FC = () => {
         <div className="bg-slate-800 p-3 text-center text-rose-300/80 text-sm border-t border-slate-700 min-h-[48px] flex items-center justify-center">
             <p>{ttsMessage}</p>
         </div>
+        {/* This input is now for login OR for desktop users */}
         <div className={!user ? 'block' : 'hidden md:block'}>
             <VoiceCommandInput 
                 onSendCommand={handleCommand} 
@@ -584,6 +583,7 @@ const UserApp: React.FC = () => {
             activeView={currentView.view}
             voiceState={voiceState}
             onMicClick={handleMicClick}
+            onSendCommand={handleCommand}
         />
       )}
 

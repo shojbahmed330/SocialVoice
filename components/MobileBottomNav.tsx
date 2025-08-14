@@ -1,6 +1,7 @@
 import React from 'react';
 import { AppView, VoiceState } from '../types';
 import Icon from './Icon';
+import VoiceCommandInput from './VoiceCommandInput';
 
 interface MobileBottomNavProps {
     onNavigate: (viewName: 'feed' | 'friends' | 'profile' | 'messages') => void;
@@ -8,6 +9,7 @@ interface MobileBottomNavProps {
     activeView: AppView;
     voiceState: VoiceState;
     onMicClick: () => void;
+    onSendCommand: (command: string) => void;
 }
 
 const NavItem: React.FC<{
@@ -36,32 +38,17 @@ const NavItem: React.FC<{
 };
 
 
-const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ onNavigate, friendRequestCount, activeView, voiceState, onMicClick }) => {
-    const getFabClass = () => {
-        let base = "-mt-8 w-16 h-16 rounded-full flex items-center justify-center text-white shadow-lg shadow-rose-900/50 transition-all duration-300 ease-in-out";
-        switch (voiceState) {
-            case VoiceState.LISTENING:
-                return `${base} bg-rose-500 ring-4 ring-rose-500/50 animate-pulse`;
-            case VoiceState.PROCESSING:
-                return `${base} bg-yellow-600 cursor-not-allowed`;
-            default: // IDLE
-                return `${base} bg-rose-600 hover:bg-rose-500 hover:scale-105`;
-        }
-    };
-
-    const getFabIcon = () => {
-        switch (voiceState) {
-            case VoiceState.PROCESSING:
-                return <Icon name="logo" className="w-8 h-8 animate-spin" />;
-            case VoiceState.LISTENING:
-            default:
-                return <Icon name="mic" className="w-8 h-8" />;
-        }
-    };
-    
+const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ onNavigate, friendRequestCount, activeView, voiceState, onMicClick, onSendCommand }) => {
     return (
-        <div className="fixed bottom-0 left-0 right-0 h-24 bg-slate-900/80 backdrop-blur-sm border-t border-slate-700 z-40 md:hidden">
-            <div className="flex justify-around items-center h-full">
+        <div className="fixed bottom-0 left-0 right-0 h-auto bg-slate-900/80 backdrop-blur-sm border-t border-slate-700 z-40 md:hidden flex flex-col">
+            {/* The new, persistent command input bar for mobile */}
+            <VoiceCommandInput
+                onSendCommand={onSendCommand}
+                voiceState={voiceState}
+                onMicClick={onMicClick}
+            />
+            {/* The 4-button navigation bar */}
+            <div className="flex justify-around items-center h-16">
                 <NavItem
                     iconName="home"
                     label="Home"
@@ -75,18 +62,6 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ onNavigate, friendReq
                     badgeCount={friendRequestCount}
                     onClick={() => onNavigate('friends')}
                 />
-
-                <div className="w-1/5 flex justify-center">
-                    <button
-                        onClick={onMicClick}
-                        disabled={voiceState === VoiceState.PROCESSING}
-                        className={getFabClass()}
-                        aria-label="Activate voice command"
-                    >
-                        {getFabIcon()}
-                    </button>
-                </div>
-                
                  <NavItem
                     iconName="message"
                     label="Messages"
