@@ -44,16 +44,44 @@ let MOCK_CAMPAIGNS: Campaign[] = [
 
 
 const NLU_SYSTEM_INSTRUCTION = `
-You are an NLU engine for a voice-controlled app called VoiceBook. Your task is to identify the user's intent and extract any relevant entities from their command. 
-The user can speak in English or Bengali. Understand Bengali slang and different ways of phrasing a command.
-Respond ONLY with a valid JSON object with the shape: { "intent": "INTENT_NAME", "slots": { "slot_name": "value" } }.
-If the intent cannot be determined, use "unknown".
+You are an NLU engine for VoiceBook, a voice-controlled social media app. Your task is to analyze the user's command, which will be provided directly as the content of the prompt, and respond with a single, valid JSON object.
+
+The JSON object MUST have an "intent" field and an optional "slots" object.
+The user might speak in English or Bengali.
 
 CONTEXTUAL AWARENESS:
-If a list of 'available_user_names' is provided in the prompt, you MUST use it as the primary source for matching the 'target_name' slot. 
-Find the best possible match from that list, even if the user's pronunciation is slightly off. The 'target_name' you return in the slot MUST be an exact name from the provided 'available_user_names' list.
+An optional list of 'available_user_names' might be appended to the user's command on a new line. If this list is provided, you MUST use it as the primary source for matching the 'target_name' slot. The 'target_name' you return in the slot MUST be an exact name from that list.
 
-Available intents: 
+If the user's intent cannot be determined from the list below, the "intent" field in your JSON response must be "unknown".
+
+---
+EXAMPLE 1
+---
+USER PROMPT:
+go to shojib's profile
+available_user_names: ["Sumi Ahmed", "Shojib Khan", "Sharmin Chowdhury"]
+
+YOUR JSON RESPONSE:
+{
+  "intent": "intent_open_profile",
+  "slots": {
+    "target_name": "Shojib Khan"
+  }
+}
+
+---
+EXAMPLE 2
+---
+USER PROMPT:
+scroll down
+
+YOUR JSON RESPONSE:
+{
+  "intent": "intent_scroll_down"
+}
+---
+
+Here is the complete list of available intents:
 - intent_signup, intent_login
 - intent_play_post, intent_pause_post, intent_next_post, intent_previous_post
 - intent_create_post, intent_stop_recording, intent_post_confirm, intent_re_record
@@ -91,21 +119,6 @@ Available intents:
 - intent_set_campaign_budget (extracts 'budget_amount')
 - intent_set_media_type (extracts 'media_type' which can be 'image', 'video', or 'audio')
 - intent_launch_campaign
-
-Examples:
-// With Context
-User command: "go to shojib's profile"
-available_user_names: ["Sumi Ahmed", "Shojib Khan", "Sharmin Chowdhury"]
--> {"intent": "intent_open_profile", "slots": {"target_name": "Shojib Khan"}}
-
-User command: "like sumi's post"
-available_user_names: ["Sumi Ahmed", "Rohan Mahmud"]
--> {"intent": "intent_like", "slots": {"target_name": "Sumi Ahmed"}}
-
-// Without Context
-User command: "go to shojib khan's profile" -> {"intent": "intent_open_profile", "slots": {"target_name": "shojib khan"}}
-User command: "shojib er profile dekhao" -> {"intent": "intent_open_profile", "slots": {"target_name": "shojib"}}
-User command: "open my profile" -> {"intent": "intent_open_profile"}
 `;
 
 const MAX_RETRIES = 5;
@@ -164,8 +177,8 @@ export const geminiService = {
         let retries = 0;
         let backoff = INITIAL_BACKOFF_MS;
         
-        // Construct the prompt with context if available
-        let fullPrompt = `User command: "${command}"`;
+        // Construct the prompt with the user command and any context
+        let fullPrompt = command;
         if (context?.userNames && context.userNames.length > 0) {
             const uniqueNames = [...new Set(context.userNames)]; // Ensure no duplicates
             fullPrompt += `\navailable_user_names: [${uniqueNames.map(name => `"${name}"`).join(', ')}]`;
@@ -183,6 +196,7 @@ export const geminiService = {
                 });
                 
                 const text = response.text.trim();
+                // The response should be clean JSON due to responseMimeType, but we keep the cleanup just in case.
                 const jsonText = text.replace(/^```(json)?/, '').replace(/```$/, '').trim();
                 const parsed = JSON.parse(jsonText);
                 return parsed as NLUResponse;
@@ -197,6 +211,7 @@ export const geminiService = {
                     backoff *= 2;
                 } else {
                     console.error("Error processing intent with Gemini:", error);
+                    // After retries, or for a non-retriable error, return unknown
                     return { intent: 'unknown' };
                 }
             }
