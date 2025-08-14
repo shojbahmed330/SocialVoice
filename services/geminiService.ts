@@ -1,18 +1,11 @@
 
-
-import { GoogleGenAI } from "@google/genai";
 import { NLUResponse, User, Post, FriendshipStatus, Message, Comment, Notification, Conversation, ChatSettings, Campaign, AdminUser } from '../types';
 import { MOCK_POSTS, MOCK_USERS, MOCK_MESSAGES, SPONSOR_CPM_BDT, MOCK_ADMINS } from '../constants';
 
 // IMPORTANT: This service uses a mock implementation for demonstration.
 // A real application would have robust API calls to a secure backend.
 
-// Ensure the API key is available, but do not handle its input in the UI.
-if (!process.env.API_KEY) {
-    console.warn("API_KEY environment variable not set. Gemini API calls will be disabled.");
-}
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+// Gemini API calls are now routed through a secure serverless proxy.
 
 let MOCK_NOTIFICATIONS: Notification[] = [];
 let MOCK_CAMPAIGNS: Campaign[] = [
@@ -41,61 +34,6 @@ let MOCK_CAMPAIGNS: Campaign[] = [
         allowDirectMessage: true,
     }
 ];
-
-
-const NLU_SYSTEM_INSTRUCTION_BASE = `
-You are a powerful NLU (Natural Language Understanding) engine for VoiceBook, a voice-controlled social media app. Your sole purpose is to analyze a user's raw text command and convert it into a structured JSON format.
-
-Your response MUST be a single, valid JSON object and nothing else.
-
-The JSON object must have:
-1. An "intent" field: A string matching one of the intents from the list below.
-2. An optional "slots" object: For intents that require extra information (like a name or number).
-
-If the user's intent is unclear or not in the list, you MUST use the intent "unknown".
-
---- INTENT LIST ---
-- intent_signup, intent_login
-- intent_play_post, intent_pause_post, intent_next_post, intent_previous_post
-- intent_create_post, intent_stop_recording, intent_post_confirm, intent_re_record
-- intent_comment (extracts optional 'target_name'), intent_post_comment, intent_view_comments (extracts optional 'target_name')
-- intent_view_comments_by_author (extracts 'target_name')
-- intent_play_comment_by_author (extracts 'target_name')
-- intent_search_user (extracts 'target_name')
-- intent_select_result (extracts 'index')
-- intent_like (extracts optional 'target_name'), intent_share
-- intent_open_profile (extracts optional 'target_name'. If no name, it's the current user.)
-- intent_go_back, intent_open_settings, intent_edit_profile
-- intent_add_friend, intent_send_message
-- intent_save_settings
-- intent_update_profile (extracts 'field' like 'name', 'bio', 'work', 'education', 'hometown', 'currentCity', 'relationshipStatus' and 'value')
-- intent_update_privacy (extracts 'setting' like 'postVisibility' or 'friendRequestPrivacy', and 'value' like 'public', 'friends', 'everyone', 'friends_of_friends')
-- intent_block_user (extracts 'target_name')
-- intent_unblock_user (extracts 'target_name')
-- intent_record_message, intent_send_chat_message
-- intent_open_friend_requests, intent_accept_request, intent_decline_request
-- intent_open_friends_page
-- intent_open_messages
-- intent_open_chat (extracts 'target_name')
-- intent_change_chat_theme (extracts 'theme_name')
-- intent_delete_chat
-- intent_generate_image (extracts 'prompt')
-- intent_clear_image
-- intent_scroll_up, intent_scroll_down, intent_stop_scroll
-- intent_claim_reward
-- intent_help, unknown
-- intent_open_sponsor_center
-- intent_create_campaign
-- intent_view_campaign_dashboard
-- intent_set_sponsor_name (extracts 'sponsor_name')
-- intent_set_campaign_caption (extracts 'caption_text')
-- intent_set_campaign_budget (extracts 'budget_amount')
-- intent_set_media_type (extracts 'media_type' which can be 'image', 'video', or 'audio')
-- intent_launch_campaign
-`;
-
-const MAX_RETRIES = 5;
-const INITIAL_BACKOFF_MS = 1000;
 
 // --- String Similarity Helper (Fuzzy Search) ---
 // Using Dice's Coefficient - good for finding similarity between two strings.
@@ -128,8 +66,10 @@ function stringSimilarity(str1: string, str2: string): number {
 
 export const geminiService = {
     async processIntent(command: string, context?: { userNames?: string[] }): Promise<NLUResponse> {
-        if (!process.env.API_KEY) {
+        const isOffline = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isOffline) {
             // Basic fallback for offline testing
+            console.warn("Offline mode detected. Using basic intent matching.");
             const lower = command.toLowerCase();
             if (lower.includes('login')) return { intent: 'intent_login' };
             if (lower.includes('signup')) return { intent: 'intent_signup' };
@@ -147,55 +87,32 @@ export const geminiService = {
             return { intent: 'unknown' };
         }
 
-        let retries = 0;
-        let backoff = INITIAL_BACKOFF_MS;
-        
-        // Dynamically build the system instruction with context
-        let dynamicSystemInstruction = NLU_SYSTEM_INSTRUCTION_BASE;
-        if (context?.userNames && context.userNames.length > 0) {
-            const uniqueNames = [...new Set(context.userNames)]; // Ensure no duplicates
-            dynamicSystemInstruction += `\n\n---
-CONTEXTUAL AWARENESS:
-A list of available user names is provided below. When extracting a 'target_name' slot, you MUST use one of these exact names from the list. Do not guess or create new names.
-Available names: [${uniqueNames.map(name => `"${name}"`).join(', ')}]`;
-        }
+        // The new logic: call the serverless function
+        try {
+            const response = await fetch('/api/proxy', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'processIntent',
+                    payload: { command, context },
+                }),
+            });
 
-
-        while(retries < MAX_RETRIES) {
-            try {
-                const response = await ai.models.generateContent({
-                    model: "gemini-2.5-flash",
-                    contents: command, // Pass the raw command directly to the model
-                    config: {
-                      systemInstruction: dynamicSystemInstruction,
-                      responseMimeType: "application/json",
-                    },
-                });
-                
-                const text = response.text.trim();
-                // The response should be clean JSON due to responseMimeType, but we keep the cleanup just in case.
-                const jsonText = text.replace(/^```(json)?/, '').replace(/```$/, '').trim();
-                const parsed = JSON.parse(jsonText);
-                return parsed as NLUResponse;
-
-            } catch (error: any) {
-                const isRateLimitError = error.toString().includes('429') || error.toString().includes('RESOURCE_EXHAUSTED');
-
-                if (isRateLimitError && retries < MAX_RETRIES - 1) {
-                    console.warn(`Rate limit hit. Retrying in ${backoff}ms... (${retries + 1}/${MAX_RETRIES -1})`);
-                    await new Promise(resolve => setTimeout(resolve, backoff));
-                    retries++;
-                    backoff *= 2;
-                } else {
-                    console.error("Error processing intent with Gemini:", error);
-                    // After retries, or for a non-retriable error, return unknown
-                    return { intent: 'unknown' };
-                }
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error("Error from proxy server:", errorData.details || errorData.error);
+                return { intent: 'unknown' };
             }
+
+            const data = await response.json();
+            return data as NLUResponse;
+
+        } catch (error) {
+            console.error("Error calling proxy server for intent processing:", error);
+            return { intent: 'unknown' };
         }
-        
-        console.error("Failed to get response from Gemini after multiple retries.");
-        return { intent: 'unknown' };
     },
 
     // Mock Backend Functions
@@ -408,28 +325,35 @@ Available names: [${uniqueNames.map(name => `"${name}"`).join(', ')}]`;
     },
 
     async generateImageForPost(prompt: string): Promise<string | null> {
-        if (!process.env.API_KEY) {
-            console.warn("API_KEY not set, returning placeholder image.");
+        const isOffline = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isOffline) {
+            console.warn("Offline mode, returning placeholder image.");
             return `https://images.unsplash.com/photo-1518791841217-8f162f1e1131?q=80&w=2070&auto=format&fit=crop`;
         }
+        
         try {
-            const response = await ai.models.generateImages({
-                model: 'imagen-3.0-generate-002',
-                prompt: prompt,
-                config: {
-                  numberOfImages: 1,
-                  outputMimeType: 'image/jpeg',
-                  aspectRatio: '1:1',
+            const response = await fetch('/api/proxy', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
                 },
+                body: JSON.stringify({
+                    action: 'generateImage',
+                    payload: { prompt },
+                }),
             });
-            
-            if (response.generatedImages && response.generatedImages.length > 0) {
-                 const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
-                 return `data:image/jpeg;base64,${base64ImageBytes}`;
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error("Error from proxy server for image generation:", errorData.details || errorData.error);
+                return null;
             }
-            return null;
+
+            const data = await response.json();
+            return data.imageUrl || null;
+
         } catch (error) {
-            console.error("Error generating image with Gemini:", error);
+            console.error("Error calling proxy server for image generation:", error);
             return null;
         }
     },
