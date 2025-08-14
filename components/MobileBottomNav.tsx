@@ -1,12 +1,13 @@
 import React from 'react';
-import { AppView } from '../types';
+import { AppView, VoiceState } from '../types';
 import Icon from './Icon';
 
 interface MobileBottomNavProps {
     onNavigate: (viewName: 'feed' | 'friends' | 'profile' | 'messages') => void;
-    onCreatePost: () => void;
     friendRequestCount: number;
     activeView: AppView;
+    voiceState: VoiceState;
+    onMicClick: () => void;
 }
 
 const NavItem: React.FC<{
@@ -35,7 +36,29 @@ const NavItem: React.FC<{
 };
 
 
-const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ onNavigate, onCreatePost, friendRequestCount, activeView }) => {
+const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ onNavigate, friendRequestCount, activeView, voiceState, onMicClick }) => {
+    const getFabClass = () => {
+        let base = "-mt-8 w-16 h-16 rounded-full flex items-center justify-center text-white shadow-lg shadow-rose-900/50 transition-all duration-300 ease-in-out";
+        switch (voiceState) {
+            case VoiceState.LISTENING:
+                return `${base} bg-rose-500 ring-4 ring-rose-500/50 animate-pulse`;
+            case VoiceState.PROCESSING:
+                return `${base} bg-yellow-600 cursor-not-allowed`;
+            default: // IDLE
+                return `${base} bg-rose-600 hover:bg-rose-500 hover:scale-105`;
+        }
+    };
+
+    const getFabIcon = () => {
+        switch (voiceState) {
+            case VoiceState.PROCESSING:
+                return <Icon name="logo" className="w-8 h-8 animate-spin" />;
+            case VoiceState.LISTENING:
+            default:
+                return <Icon name="mic" className="w-8 h-8" />;
+        }
+    };
+    
     return (
         <div className="fixed bottom-0 left-0 right-0 h-24 bg-slate-900/80 backdrop-blur-sm border-t border-slate-700 z-40 md:hidden">
             <div className="flex justify-around items-center h-full">
@@ -55,11 +78,12 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ onNavigate, onCreateP
 
                 <div className="w-1/5 flex justify-center">
                     <button
-                        onClick={onCreatePost}
-                        className="-mt-8 w-16 h-16 bg-rose-600 hover:bg-rose-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-rose-900/50 transition-transform hover:scale-105"
-                        aria-label="Create new post"
+                        onClick={onMicClick}
+                        disabled={voiceState === VoiceState.PROCESSING}
+                        className={getFabClass()}
+                        aria-label="Activate voice command"
                     >
-                        <Icon name="mic" className="w-8 h-8"/>
+                        {getFabIcon()}
                     </button>
                 </div>
                 

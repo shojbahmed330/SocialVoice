@@ -481,38 +481,6 @@ const UserApp: React.FC = () => {
     }
   };
 
-  const renderVoiceFab = () => {
-    if (!user) return null;
-
-    const getFabIcon = () => {
-        switch (voiceState) {
-            case VoiceState.PROCESSING:
-                return <Icon name="logo" className="w-8 h-8 animate-spin" />;
-            case VoiceState.LISTENING:
-            default:
-                return <Icon name="mic" className="w-8 h-8" />;
-        }
-    };
-    
-    const getFabClass = () => {
-        let base = "fixed bottom-28 right-5 w-16 h-16 rounded-full flex items-center justify-center text-white shadow-lg z-50 transition-all duration-300 ease-in-out md:hidden";
-        switch (voiceState) {
-            case VoiceState.LISTENING:
-                return `${base} bg-rose-500 ring-4 ring-rose-500/50 animate-pulse`;
-            case VoiceState.PROCESSING:
-                 return `${base} bg-yellow-600 cursor-not-allowed`;
-            default: // IDLE
-                return `${base} bg-rose-600 hover:bg-rose-500 hover:scale-105`;
-        }
-    };
-
-    return (
-        <button onClick={handleMicClick} disabled={voiceState === VoiceState.PROCESSING} className={getFabClass()} aria-label="Activate voice command">
-            {getFabIcon()}
-        </button>
-    );
-  };
-
 
   return (
     <div className="h-screen w-screen bg-slate-900 flex flex-col font-sans">
@@ -579,10 +547,11 @@ const UserApp: React.FC = () => {
             <Sidebar 
                 currentUser={user}
                 onNavigate={handleSidebarNavigate}
-                onCreatePost={handleStartCreatePost}
                 friendRequestCount={friendRequestCount}
                 activeView={currentView.view}
                 voiceCoins={user.voiceCoins || 0}
+                voiceState={voiceState}
+                onMicClick={handleMicClick}
             />
         )}
         <main className="flex-grow overflow-hidden relative">
@@ -609,13 +578,12 @@ const UserApp: React.FC = () => {
       {user && (
         <MobileBottomNav 
             onNavigate={handleSidebarNavigate}
-            onCreatePost={handleStartCreatePost}
             friendRequestCount={friendRequestCount}
             activeView={currentView.view}
+            voiceState={voiceState}
+            onMicClick={handleMicClick}
         />
       )}
-      
-      {user && renderVoiceFab()}
 
       {isShowingAd && user && (
             <AdModal 

@@ -1,16 +1,17 @@
 
 
 import React from 'react';
-import { User, AppView } from '../types';
+import { User, AppView, VoiceState } from '../types';
 import Icon from './Icon';
 
 interface SidebarProps {
   currentUser: User;
   onNavigate: (viewName: 'feed' | 'friends' | 'settings' | 'profile' | 'messages' | 'sponsor_center') => void;
-  onCreatePost: () => void;
   friendRequestCount: number;
   activeView: AppView;
   voiceCoins: number;
+  voiceState: VoiceState;
+  onMicClick: () => void;
 }
 
 const NavItem: React.FC<{
@@ -42,7 +43,40 @@ const NavItem: React.FC<{
     );
 };
 
-const Sidebar: React.FC<SidebarProps> = ({ currentUser, onNavigate, onCreatePost, friendRequestCount, activeView, voiceCoins }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentUser, onNavigate, friendRequestCount, activeView, voiceCoins, voiceState, onMicClick }) => {
+
+  const getFabClass = () => {
+    let base = "w-full text-white font-bold text-lg py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2";
+    switch (voiceState) {
+        case VoiceState.LISTENING:
+            return `${base} bg-rose-500 ring-4 ring-rose-500/50 animate-pulse`;
+        case VoiceState.PROCESSING:
+            return `${base} bg-yellow-600 cursor-not-allowed`;
+        default: // IDLE
+            return `${base} bg-rose-600 hover:bg-rose-500`;
+    }
+  };
+
+  const getFabIcon = () => {
+    switch (voiceState) {
+        case VoiceState.PROCESSING:
+            return <Icon name="logo" className="w-6 h-6 animate-spin" />;
+        case VoiceState.LISTENING:
+        default:
+            return <Icon name="mic" className="w-6 h-6" />;
+    }
+  };
+
+  const getFabText = () => {
+    switch (voiceState) {
+        case VoiceState.PROCESSING:
+            return "Processing...";
+        case VoiceState.LISTENING:
+            return "Listening...";
+        default:
+            return "Voice Command";
+    }
+  };
 
   return (
     <aside className="w-72 bg-slate-800/50 border-r border-slate-700/50 p-4 flex-col flex-shrink-0 hidden md:flex">
@@ -110,14 +144,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, onNavigate, onCreatePost
       </div>
 
 
-      {/* Create Post Button */}
+      {/* Voice Command Button */}
       <div className="flex-shrink-0">
         <button
-          onClick={onCreatePost}
-          className="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold text-lg py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+          onClick={onMicClick}
+          disabled={voiceState === VoiceState.PROCESSING}
+          className={getFabClass()}
         >
-            <Icon name="mic" className="w-6 h-6"/>
-            <span>Create Post</span>
+            {getFabIcon()}
+            <span>{getFabText()}</span>
         </button>
       </div>
     </aside>
