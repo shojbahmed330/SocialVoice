@@ -31,7 +31,7 @@ const recognition = SpeechRecognition ? new SpeechRecognition() : null;
 
 if (recognition) {
   recognition.continuous = false;
-  recognition.lang = 'en-US';
+  // REMOVED: recognition.lang = 'bn-BD'; This allows the browser to use its default language.
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
 }
@@ -125,8 +125,12 @@ const UserApp: React.FC = () => {
       setTtsMessage("Listening...");
     };
     recognition.onend = () => {
+      // This handles cases where recognition ends without a result (e.g., silence)
       if(voiceState === VoiceState.LISTENING) {
         setVoiceState(VoiceState.IDLE);
+        if (ttsMessage === "Listening...") {
+            setTtsMessage("Didn't catch that. Try again.");
+        }
       }
     };
     recognition.onerror = (event: any) => {
@@ -138,9 +142,11 @@ const UserApp: React.FC = () => {
     };
     recognition.onresult = (event: any) => {
       const command = event.results[0][0].transcript;
+      // Provide immediate feedback to the user on what was heard
+      setTtsMessage(`Heard: "${command}"`);
       handleCommand(command);
     };
-  }, [handleCommand, voiceState]);
+  }, [handleCommand, voiceState, ttsMessage]);
 
   const handleMicClick = () => {
     if (!recognition) {
