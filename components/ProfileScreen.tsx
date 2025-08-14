@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { User, Post, FriendshipStatus, ScrollState } from '../types';
+import { User, Post, FriendshipStatus, ScrollState, AppView } from '../types';
 import PostCard from './PostCard';
 import Icon from './Icon';
 import { geminiService } from '../services/geminiService';
@@ -18,7 +18,12 @@ interface ProfileScreenProps {
   onOpenProfile: (userName: string) => void;
   onLikePost: (postId: string) => void;
   onBlockUser: (user: User) => void;
+  
+  onCommandProcessed: () => void;
   scrollState: ScrollState;
+  onSetScrollState: (state: ScrollState) => void;
+  onNavigate: (view: AppView, props?: any) => void;
+  onGoBack: () => void;
 }
 
 const AboutItem: React.FC<{iconName: React.ComponentProps<typeof Icon>['name'], children: React.ReactNode}> = ({iconName, children}) => (
@@ -29,7 +34,11 @@ const AboutItem: React.FC<{iconName: React.ComponentProps<typeof Icon>['name'], 
 );
 
 
-const ProfileScreen: React.FC<ProfileScreenProps> = ({ userName, currentUser, onSetTtsMessage, lastCommand, onStartMessage, onEditProfile, onViewPost, onOpenProfile, onLikePost, onBlockUser, scrollState }) => {
+const ProfileScreen: React.FC<ProfileScreenProps> = ({ 
+    userName, currentUser, onSetTtsMessage, lastCommand, onStartMessage, 
+    onEditProfile, onViewPost, onOpenProfile, onLikePost, onBlockUser, scrollState,
+    onCommandProcessed, onSetScrollState, onNavigate, onGoBack
+}) => {
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -85,68 +94,107 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ userName, currentUser, on
   }
 
   const handleCommand = useCallback(async (command: string) => {
-    if (!profileUser) return;
-    const context = { userNames: [profileUser.name] };
-    const intentResponse = await geminiService.processIntent(command, context);
+    if (!profileUser) {
+        onCommandProcessed();
+        return;
+    };
     
-    switch (intentResponse.intent) {
-      case 'intent_next_post':
-        if(posts.length > 0) {
-            isProgrammaticScroll.current = true;
-            setCurrentPostIndex(prev => (prev + 1) % posts.length);
-            setIsPlaying(true);
+    try {
+        const context = { userNames: [profileUser.name] };
+        const intentResponse = await geminiService.processIntent(command, context);
+        
+        switch (intentResponse.intent) {
+          // --- Profile Specific Intents ---
+          case 'intent_next_post':
+            if(posts.length > 0) {
+                isProgrammaticScroll.current = true;
+                setCurrentPostIndex(prev => (prev + 1) % posts.length);
+                setIsPlaying(true);
+            }
+            break;
+          case 'intent_previous_post':
+            if (posts.length > 0) {
+                isProgrammaticScroll.current = true;
+                setCurrentPostIndex(prev => (prev - 1 + posts.length) % posts.length);
+                setIsPlaying(true);
+            }
+            break;
+          case 'intent_play_post':
+            if (posts.length > 0) setIsPlaying(true);
+            break;
+          case 'intent_pause_post':
+            setIsPlaying(false);
+            break;
+          case 'intent_like':
+            if(posts.length > 0) {
+                onLikePost(posts[currentPostIndex].id);
+            }
+            break;
+          case 'intent_comment':
+          case 'intent_view_comments':
+            handleComment();
+            break;
+          case 'intent_add_friend':
+            if (profileUser.id !== currentUser.id) {
+              const result = await geminiService.addFriend(currentUser.id, profileUser.id);
+              if (result.success) {
+                setProfileUser(u => u ? { ...u, friendshipStatus: FriendshipStatus.REQUEST_SENT } : null);
+                onSetTtsMessage(TTS_PROMPTS.friend_request_sent(profileUser.name));
+              } else if(result.reason === 'friends_of_friends'){
+                onSetTtsMessage(TTS_PROMPTS.friend_request_privacy_block(profileUser.name));
+              }
+            }
+            break;
+          case 'intent_block_user':
+            if (profileUser.id !== currentUser.id) {
+              onBlockUser(profileUser);
+            }
+            break;
+          case 'intent_send_message':
+             if (profileUser.id !== currentUser.id) {
+                onStartMessage(profileUser);
+             }
+            break;
+          case 'intent_edit_profile':
+            if (profileUser.id === currentUser.id) {
+                onEditProfile();
+            }
+            break;
+            
+          // --- Global Intents ---
+          case 'intent_go_back':
+            onGoBack();
+            break;
+          case 'intent_open_friends_page':
+              onNavigate(AppView.FRIENDS);
+              break;
+          case 'intent_open_messages':
+              onNavigate(AppView.CONVERSATIONS);
+              break;
+          case 'intent_scroll_down':
+              onSetScrollState('down');
+              break;
+          case 'intent_scroll_up':
+              onSetScrollState('up');
+              break;
+          case 'intent_stop_scroll':
+              onSetScrollState('none');
+              break;
+          default:
+              onSetTtsMessage(TTS_PROMPTS.error_generic);
+              break;
         }
-        break;
-      case 'intent_previous_post':
-        if (posts.length > 0) {
-            isProgrammaticScroll.current = true;
-            setCurrentPostIndex(prev => (prev - 1 + posts.length) % posts.length);
-            setIsPlaying(true);
-        }
-        break;
-      case 'intent_play_post':
-        if (posts.length > 0) setIsPlaying(true);
-        break;
-      case 'intent_pause_post':
-        setIsPlaying(false);
-        break;
-      case 'intent_like':
-        if(posts.length > 0) {
-            onLikePost(posts[currentPostIndex].id);
-        }
-        break;
-      case 'intent_comment':
-      case 'intent_view_comments':
-        handleComment();
-        break;
-      case 'intent_add_friend':
-        if (profileUser.id !== currentUser.id) {
-          const result = await geminiService.addFriend(currentUser.id, profileUser.id);
-          if (result.success) {
-            setProfileUser(u => u ? { ...u, friendshipStatus: FriendshipStatus.REQUEST_SENT } : null);
-            onSetTtsMessage(TTS_PROMPTS.friend_request_sent(profileUser.name));
-          } else if(result.reason === 'friends_of_friends'){
-            onSetTtsMessage(TTS_PROMPTS.friend_request_privacy_block(profileUser.name));
-          }
-        }
-        break;
-      case 'intent_block_user':
-        if (profileUser.id !== currentUser.id) {
-          onBlockUser(profileUser);
-        }
-        break;
-      case 'intent_send_message':
-         if (profileUser.id !== currentUser.id) {
-            onStartMessage(profileUser);
-         }
-        break;
-      case 'intent_edit_profile':
-        if (profileUser.id === currentUser.id) {
-            onEditProfile();
-        }
-        break;
+    } catch (error) {
+        console.error("Error processing command in ProfileScreen:", error);
+        onSetTtsMessage(TTS_PROMPTS.error_generic);
+    } finally {
+        onCommandProcessed();
     }
-  }, [profileUser, posts, currentPostIndex, onSetTtsMessage, onStartMessage, currentUser.id, onEditProfile, onViewPost, onLikePost, onBlockUser]);
+  }, [
+      profileUser, posts, currentPostIndex, onSetTtsMessage, onStartMessage, 
+      currentUser.id, onEditProfile, onViewPost, onLikePost, onBlockUser,
+      onCommandProcessed, onGoBack, onNavigate, onSetScrollState
+  ]);
 
   useEffect(() => {
     if (lastCommand) {

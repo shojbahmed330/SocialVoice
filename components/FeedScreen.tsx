@@ -1,7 +1,5 @@
-
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import type { Post, User, ScrollState, Campaign } from '../types';
+import { Post, User, ScrollState, Campaign, AppView } from '../types';
 import PostCard from './PostCard';
 import CreatePostWidget from './CreatePostWidget';
 import SkeletonPostCard from './SkeletonPostCard';
@@ -20,12 +18,23 @@ interface FeedScreenProps {
   onLikePost: (postId: string) => void;
   onStartCreatePost: () => void;
   onRewardedAdClick: (campaign: Campaign) => void;
-  scrollState: ScrollState;
   onAdViewed: (campaignId: string) => void;
   onAdClick: (post: Post) => void;
+  
+  // New props for handling all commands locally
+  onCommandProcessed: () => void;
+  scrollState: ScrollState;
+  onSetScrollState: (state: ScrollState) => void;
+  onNavigate: (view: AppView, props?: any) => void;
+  friends: User[];
+  setSearchResults: (results: User[]) => void;
 }
 
-const FeedScreen: React.FC<FeedScreenProps> = ({ isLoading, posts, currentUser, onSetTtsMessage, lastCommand, onOpenProfile, onViewPost, onLikePost, onStartCreatePost, onRewardedAdClick, scrollState, onAdViewed, onAdClick }) => {
+const FeedScreen: React.FC<FeedScreenProps> = ({
+    isLoading, posts, currentUser, onSetTtsMessage, lastCommand, onOpenProfile,
+    onViewPost, onLikePost, onStartCreatePost, onRewardedAdClick, onAdViewed,
+    onAdClick, onCommandProcessed, scrollState, onSetScrollState, onNavigate, friends, setSearchResults
+}) => {
   const [currentPostIndex, setCurrentPostIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [rewardedCampaign, setRewardedCampaign] = useState<Campaign | null>(null);
@@ -79,78 +88,118 @@ const FeedScreen: React.FC<FeedScreenProps> = ({ isLoading, posts, currentUser, 
   }, [scrollState]);
   
   const handleCommand = useCallback(async (command: string) => {
-    const userNamesOnScreen = posts.map(p => p.isSponsored ? p.sponsorName as string : p.author.name);
-    const intentResponse = await geminiService.processIntent(command, { userNames: [...new Set(userNamesOnScreen)] });
-    
-    const { intent, slots } = intentResponse;
+    try {
+        const userNamesOnScreen = posts.map(p => p.isSponsored ? p.sponsorName as string : p.author.name);
+        const allContextNames = [...userNamesOnScreen, ...friends.map(f => f.name)];
+        const intentResponse = await geminiService.processIntent(command, { userNames: [...new Set(allContextNames)] });
+        
+        const { intent, slots } = intentResponse;
 
-    switch (intent) {
-      case 'intent_next_post':
-        isProgrammaticScroll.current = true;
-        setCurrentPostIndex(prev => (prev < 0 ? 0 : (prev + 1) % posts.length));
-        setIsPlaying(true);
-        break;
-      case 'intent_previous_post':
-        isProgrammaticScroll.current = true;
-        setCurrentPostIndex(prev => (prev > 0 ? prev - 1 : posts.length - 1));
-        setIsPlaying(true);
-        break;
-      case 'intent_play_post':
-        if (currentPostIndex === -1 && posts.length > 0) {
+        switch (intent) {
+          // --- Feed Specific Intents ---
+          case 'intent_next_post':
             isProgrammaticScroll.current = true;
-            setCurrentPostIndex(0);
-        }
-        setIsPlaying(true);
-        break;
-      case 'intent_pause_post':
-        setIsPlaying(false);
-        break;
-      case 'intent_like':
-        if (slots?.target_name) {
-            const targetName = slots.target_name as string;
-            const postToLike = posts.find(p => !p.isSponsored && p.author.name === targetName);
-            if (postToLike) {
-                onLikePost(postToLike.id);
-            } else {
-                onSetTtsMessage(`I couldn't find a post by ${targetName} to like.`);
+            setCurrentPostIndex(prev => (prev < 0 ? 0 : (prev + 1) % posts.length));
+            setIsPlaying(true);
+            break;
+          case 'intent_previous_post':
+            isProgrammaticScroll.current = true;
+            setCurrentPostIndex(prev => (prev > 0 ? prev - 1 : posts.length - 1));
+            setIsPlaying(true);
+            break;
+          case 'intent_play_post':
+            if (currentPostIndex === -1 && posts.length > 0) {
+                isProgrammaticScroll.current = true;
+                setCurrentPostIndex(0);
             }
-        } else if (currentPostIndex !== -1 && posts[currentPostIndex] && !posts[currentPostIndex].isSponsored) {
-          onLikePost(posts[currentPostIndex].id);
-        }
-        break;
-      case 'intent_comment':
-      case 'intent_view_comments':
-      case 'intent_view_comments_by_author':
-        if (slots?.target_name) {
-            const targetName = slots.target_name as string;
-            const postToView = posts.find(p => !p.isSponsored && p.author.name === targetName);
-            if (postToView) {
-                onViewPost(postToView.id);
-            } else {
-                onSetTtsMessage(`I can't find a post by ${targetName} to view comments on.`);
+            setIsPlaying(true);
+            break;
+          case 'intent_pause_post':
+            setIsPlaying(false);
+            break;
+          case 'intent_like':
+            if (slots?.target_name) {
+                const targetName = slots.target_name as string;
+                const postToLike = posts.find(p => !p.isSponsored && p.author.name === targetName);
+                if (postToLike) {
+                    onLikePost(postToLike.id);
+                } else {
+                    onSetTtsMessage(`I couldn't find a post by ${targetName} to like.`);
+                }
+            } else if (currentPostIndex !== -1 && posts[currentPostIndex] && !posts[currentPostIndex].isSponsored) {
+              onLikePost(posts[currentPostIndex].id);
             }
-        } else if (currentPostIndex !== -1 && posts[currentPostIndex] && !posts[currentPostIndex].isSponsored) {
-            onViewPost(posts[currentPostIndex].id);
+            break;
+          case 'intent_comment':
+          case 'intent_view_comments':
+          case 'intent_view_comments_by_author':
+            if (slots?.target_name) {
+                const targetName = slots.target_name as string;
+                const postToView = posts.find(p => !p.isSponsored && p.author.name === targetName);
+                if (postToView) {
+                    onViewPost(postToView.id);
+                } else {
+                    onSetTtsMessage(`I can't find a post by ${targetName} to view comments on.`);
+                }
+            } else if (currentPostIndex !== -1 && posts[currentPostIndex] && !posts[currentPostIndex].isSponsored) {
+                onViewPost(posts[currentPostIndex].id);
+            }
+            break;
+
+          // --- Global Intents Handled Here ---
+          case 'intent_open_profile':
+            if (slots?.target_name) {
+              onOpenProfile(slots.target_name as string);
+            } else if (currentPostIndex !== -1 && posts[currentPostIndex] && !posts[currentPostIndex].isSponsored) {
+                onOpenProfile(posts[currentPostIndex].author.name);
+            }
+            break;
+          case 'intent_create_post':
+              onStartCreatePost();
+              break;
+          case 'intent_open_friends_page':
+              onNavigate(AppView.FRIENDS);
+              break;
+          case 'intent_open_messages':
+              onNavigate(AppView.CONVERSATIONS);
+              break;
+          case 'intent_open_settings':
+              onNavigate(AppView.SETTINGS);
+              break;
+          case 'intent_search_user':
+            if (slots?.target_name) {
+                const query = slots.target_name as string;
+                const results = await geminiService.searchUsers(query);
+                setSearchResults(results);
+                onNavigate(AppView.SEARCH_RESULTS, { query });
+            }
+            break;
+          case 'intent_scroll_down':
+              onSetScrollState('down');
+              break;
+          case 'intent_scroll_up':
+              onSetScrollState('up');
+              break;
+          case 'intent_stop_scroll':
+              onSetScrollState('none');
+              break;
+          case 'intent_help':
+              onSetTtsMessage(TTS_PROMPTS.feed_loaded);
+              break;
+          default:
+              onSetTtsMessage(TTS_PROMPTS.error_generic);
+              break;
         }
-        break;
-      case 'intent_open_profile':
-        if (slots?.target_name) {
-          onOpenProfile(slots.target_name as string);
-        } else if (currentPostIndex !== -1 && posts[currentPostIndex] && !posts[currentPostIndex].isSponsored) {
-            onOpenProfile(posts[currentPostIndex].author.name);
-        }
-        break;
-      case 'intent_create_post':
-          onStartCreatePost();
-          break;
-      case 'intent_help':
-          onSetTtsMessage(TTS_PROMPTS.feed_loaded);
-          break;
-      case 'unknown':
-          onSetTtsMessage(TTS_PROMPTS.error_generic);
-          break;
+    } catch (error) {
+        console.error("Error processing command in FeedScreen:", error);
+        onSetTtsMessage(TTS_PROMPTS.error_generic);
+    } finally {
+        onCommandProcessed();
     }
-  }, [posts, currentPostIndex, onOpenProfile, onLikePost, onViewPost, onSetTtsMessage, onStartCreatePost]);
+  }, [
+      posts, currentPostIndex, friends, onOpenProfile, onLikePost, onViewPost, onSetTtsMessage, onStartCreatePost, 
+      onNavigate, onSetScrollState, setSearchResults, onCommandProcessed
+  ]);
 
 
   useEffect(() => {

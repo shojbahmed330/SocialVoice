@@ -78,92 +78,17 @@ const UserApp: React.FC = () => {
   
   const handleStartMessage = (recipient: User) => navigate(AppView.MESSAGES, { recipient, ttsMessage: TTS_PROMPTS.message_screen_loaded(recipient.name) });
 
-  // Main command handler
-  const handleCommand = useCallback(async (command: string) => {
+  const handleCommand = useCallback((command: string) => {
     setVoiceState(VoiceState.PROCESSING);
-    setScrollState('none'); // Stop scrolling on any new command
-    
-    if (currentView.view === AppView.AUTH) {
-      setLastCommand(command);
-      setVoiceState(VoiceState.IDLE);
-      return;
-    }
+    setScrollState('none');
+    setLastCommand(command);
+  }, []);
 
-    // For global commands, the context is the user's friend list
-    const context = { userNames: friends.map(f => f.name) };
-    const intentResponse = await geminiService.processIntent(command, context);
-    
-    switch(intentResponse.intent) {
-      case 'intent_go_back':
-        goBack();
-        break;
-      case 'intent_open_settings':
-          if (currentView.view !== AppView.SETTINGS) {
-               navigate(AppView.SETTINGS);
-               setTtsMessage(TTS_PROMPTS.settings_opened);
-          }
-          break;
-      case 'intent_open_sponsor_center':
-          if (currentView.view !== AppView.SPONSOR_CENTER) {
-            navigate(AppView.SPONSOR_CENTER);
-          }
-          break;
-      case 'intent_edit_profile':
-        if (user) handleEditProfile();
-        break;
-      case 'intent_create_post':
-        handleStartCreatePost();
-        break;
-      case 'intent_open_friends_page':
-        if(currentView.view !== AppView.FRIENDS) navigate(AppView.FRIENDS);
-        break;
-      case 'intent_open_messages':
-        if(currentView.view !== AppView.CONVERSATIONS) navigate(AppView.CONVERSATIONS);
-        break;
-      case 'intent_open_chat':
-        if(intentResponse.slots?.target_name && user) {
-            const target = await geminiService.getUserProfile(intentResponse.slots.target_name as string);
-            if (target) {
-                handleOpenConversation(target);
-            } else {
-                setTtsMessage(`Sorry, I couldn't find anyone named ${intentResponse.slots.target_name}.`);
-            }
-        }
-        break;
-      case 'intent_block_user':
-          if (intentResponse.slots?.target_name) {
-              const target = await geminiService.getUserProfile(intentResponse.slots.target_name as string);
-              if (target && user) handleBlockUser(target);
-          }
-          break;
-      case 'intent_search_user':
-        if(intentResponse.slots?.target_name) {
-            const query = intentResponse.slots.target_name as string;
-            const results = await geminiService.searchUsers(query);
-            setSearchResults(results);
-            navigate(AppView.SEARCH_RESULTS, { query });
-        }
-        break;
-      case 'intent_scroll_down':
-          setScrollState('down');
-          break;
-      case 'intent_scroll_up':
-          setScrollState('up');
-          break;
-      case 'intent_stop_scroll':
-          setScrollState('none');
-          break;
-      case 'intent_claim_reward':
-          setTtsMessage("Please click the 'Watch Ad & Earn' button to claim your reward.");
-          break;
-      default:
-        setLastCommand(command); // Pass to active view if not handled globally
-        break;
-    }
-
+  const handleCommandProcessed = useCallback(() => {
+    setLastCommand(null);
     setVoiceState(VoiceState.IDLE);
-    
-  }, [currentView.view, user, goBack, friends]);
+  }, []);
+
 
   // --- Real-time Simulation Effect ---
   useEffect(() => {
@@ -229,13 +154,6 @@ const UserApp: React.FC = () => {
     }
   }
 
-  useEffect(() => {
-      if (lastCommand) {
-          const timer = setTimeout(() => setLastCommand(null), 50);
-          return () => clearTimeout(timer);
-      }
-  }, [lastCommand]);
-  
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
         if (notificationPanelRef.current && !notificationPanelRef.current.contains(event.target as Node)) {
@@ -518,31 +436,46 @@ const UserApp: React.FC = () => {
         return <AuthScreen onAuthSuccess={handleAuthSuccess} ttsMessage={ttsMessage} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand}/>
     }
 
+    const commonScreenProps = {
+      currentUser: user,
+      onSetTtsMessage: setTtsMessage,
+      lastCommand: lastCommand,
+      onCommandProcessed: handleCommandProcessed,
+      scrollState: scrollState,
+      onSetScrollState: setScrollState,
+      onGoBack: goBack,
+      onNavigate: navigate,
+      onOpenProfile: handleOpenProfile,
+      onBlockUser: handleBlockUser,
+      friends,
+      setSearchResults,
+    };
+
     switch (currentView.view) {
       case AppView.AUTH:
         return <AuthScreen onAuthSuccess={handleAuthSuccess} ttsMessage={ttsMessage} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} />;
       case AppView.FEED:
-        return <FeedScreen isLoading={isLoadingFeed} posts={posts} currentUser={user!} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} onOpenProfile={handleOpenProfile} onViewPost={handleViewPost} onLikePost={handleLikePost} onStartCreatePost={handleStartCreatePost} scrollState={scrollState} onRewardedAdClick={handleRewardedAdClick} onAdViewed={handleAdViewed} onAdClick={handleAdClick} />;
+        return <FeedScreen {...commonScreenProps} isLoading={isLoadingFeed} posts={posts} onViewPost={handleViewPost} onLikePost={handleLikePost} onStartCreatePost={handleStartCreatePost} onRewardedAdClick={handleRewardedAdClick} onAdViewed={handleAdViewed} onAdClick={handleAdClick} />;
       case AppView.PROFILE:
-        return <ProfileScreen userName={currentView.props.userName} currentUser={user!} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} onStartMessage={handleStartMessage} onEditProfile={handleEditProfile} onViewPost={handleViewPost} onOpenProfile={handleOpenProfile} onLikePost={handleLikePost} onBlockUser={handleBlockUser} scrollState={scrollState}/>;
+        return <ProfileScreen {...commonScreenProps} userName={currentView.props.userName} onStartMessage={handleStartMessage} onEditProfile={handleEditProfile} onViewPost={handleViewPost} onLikePost={handleLikePost}/>;
       case AppView.POST_DETAILS:
-        return <PostDetailScreen postId={currentView.props.postId} newlyAddedCommentId={currentView.props.newlyAddedCommentId} currentUser={user!} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} onStartComment={handleStartComment} onLikePost={handleLikePost} onOpenProfile={handleOpenProfile} scrollState={scrollState}/>;
+        return <PostDetailScreen {...commonScreenProps} postId={currentView.props.postId} newlyAddedCommentId={currentView.props.newlyAddedCommentId} onStartComment={handleStartComment} onLikePost={handleLikePost} />;
       case AppView.FRIENDS:
-        return <FriendsScreen currentUser={user!} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} onOpenProfile={handleOpenProfile} scrollState={scrollState} />;
+        return <FriendsScreen {...commonScreenProps} />;
       case AppView.SEARCH_RESULTS:
-        return <SearchResultsScreen results={searchResults} query={currentView.props.query} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} onOpenProfile={handleOpenProfile} />;
+        return <SearchResultsScreen {...commonScreenProps} results={searchResults} query={currentView.props.query} />;
       case AppView.SETTINGS:
-        return <SettingsScreen currentUser={user!} onUpdateSettings={handleUpdateSettings} onUnblockUser={handleUnblockUser} lastCommand={lastCommand} onSetTtsMessage={setTtsMessage} scrollState={scrollState} />;
+        return <SettingsScreen {...commonScreenProps} onUpdateSettings={handleUpdateSettings} onUnblockUser={handleUnblockUser} />;
       case AppView.CREATE_POST:
-        return <CreatePostScreen user={user!} onPostCreated={handlePostCreated} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} onDeductCoinsForImage={handleDeductCoinsForImage} />;
+        return <CreatePostScreen {...commonScreenProps} user={user!} onPostCreated={handlePostCreated} onDeductCoinsForImage={handleDeductCoinsForImage} />;
       case AppView.CREATE_COMMENT:
-        return <CreateCommentScreen user={user!} postId={currentView.props.postId} onCommentPosted={handleCommentPosted} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} />;
+        return <CreateCommentScreen {...commonScreenProps} user={user!} postId={currentView.props.postId} onCommentPosted={handleCommentPosted} />;
       case AppView.CONVERSATIONS:
-        return <ConversationsScreen currentUser={user!} onOpenConversation={handleOpenConversation} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} />;
+        return <ConversationsScreen {...commonScreenProps} onOpenConversation={handleOpenConversation} />;
       case AppView.MESSAGES:
-        return <MessageScreen currentUser={user!} recipientUser={currentView.props.recipient} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} scrollState={scrollState} onBlockUser={handleBlockUser} onGoBack={goBack} />;
+        return <MessageScreen {...commonScreenProps} recipientUser={currentView.props.recipient} onGoBack={goBack} />;
       case AppView.SPONSOR_CENTER:
-        return <SponsorCenterScreen currentUser={user!} onSetTtsMessage={setTtsMessage} lastCommand={lastCommand} />;
+        return <SponsorCenterScreen {...commonScreenProps} />;
       default:
         return <div className="text-white p-8">Unknown view</div>;
     }

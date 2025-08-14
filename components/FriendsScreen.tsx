@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { User, ScrollState, FriendshipStatus } from '../types';
+import { User, ScrollState, FriendshipStatus, AppView } from '../types';
 import { geminiService } from '../services/geminiService';
 import { TTS_PROMPTS } from '../constants';
 import Icon from './Icon';
@@ -13,11 +13,14 @@ interface FriendsScreenProps {
   lastCommand: string | null;
   onOpenProfile: (userName: string) => void;
   scrollState: ScrollState;
+  
+  onCommandProcessed: () => void;
+  onNavigate: (view: AppView, props?: any) => void;
 }
 
 type ActiveTab = 'requests' | 'suggestions' | 'all_friends';
 
-const FriendsScreen: React.FC<FriendsScreenProps> = ({ currentUser, onSetTtsMessage, lastCommand, onOpenProfile, scrollState }) => {
+const FriendsScreen: React.FC<FriendsScreenProps> = ({ currentUser, onSetTtsMessage, lastCommand, onOpenProfile, scrollState, onCommandProcessed, onNavigate }) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('requests');
   const [requests, setRequests] = useState<User[]>([]);
   const [suggestions, setSuggestions] = useState<User[]>([]);
@@ -100,29 +103,52 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ currentUser, onSetTtsMess
   }, [currentUser.id, fetchData, onSetTtsMessage]);
 
   const handleCommand = useCallback(async (command: string) => {
-    let contextUsers: User[] = [];
-    if (activeTab === 'requests') contextUsers = requests;
-    else if (activeTab === 'suggestions') contextUsers = suggestions;
-    else if (activeTab === 'all_friends') contextUsers = allFriends;
+    try {
+        let contextUsers: User[] = [];
+        if (activeTab === 'requests') contextUsers = requests;
+        else if (activeTab === 'suggestions') contextUsers = suggestions;
+        else if (activeTab === 'all_friends') contextUsers = allFriends;
 
-    const intentResponse = await geminiService.processIntent(command, { userNames: contextUsers.map(u => u.name) });
-    
-    if (intentResponse.slots?.target_name) {
-        const targetName = intentResponse.slots.target_name as string;
-        // Find the user from our context list that Gemini picked
-        const targetUser = contextUsers.find(r => r.name === targetName);
+        const intentResponse = await geminiService.processIntent(command, { userNames: contextUsers.map(u => u.name) });
+        
+        const { intent, slots } = intentResponse;
 
-        if(targetUser) {
-            if (intentResponse.intent === 'intent_accept_request') {
-                handleAccept(targetUser);
-            } else if (intentResponse.intent === 'intent_decline_request') {
-                handleDecline(targetUser);
-            } else if (intentResponse.intent === 'intent_add_friend') {
-                handleAddFriend(targetUser);
+        if (slots?.target_name) {
+            const targetName = slots.target_name as string;
+            const targetUser = contextUsers.find(r => r.name === targetName);
+
+            if(targetUser) {
+                if (intent === 'intent_accept_request') {
+                    handleAccept(targetUser);
+                    return; // early exit
+                } else if (intent === 'intent_decline_request') {
+                    handleDecline(targetUser);
+                    return; // early exit
+                } else if (intent === 'intent_add_friend') {
+                    handleAddFriend(targetUser);
+                    return; // early exit
+                }
             }
         }
+        
+        // Handle global commands if no specific friend action was taken
+        switch (intent) {
+            case 'intent_open_messages':
+                onNavigate(AppView.CONVERSATIONS);
+                break;
+            default:
+                 onSetTtsMessage(TTS_PROMPTS.error_generic);
+                break;
+        }
+
+    } catch (error) {
+        console.error("Error processing command in FriendsScreen:", error);
+        onSetTtsMessage(TTS_PROMPTS.error_generic);
+    } finally {
+        onCommandProcessed();
     }
-  }, [requests, suggestions, allFriends, activeTab, handleAccept, handleDecline, handleAddFriend]);
+
+  }, [requests, suggestions, allFriends, activeTab, handleAccept, handleDecline, handleAddFriend, onCommandProcessed, onNavigate, onSetTtsMessage]);
 
   useEffect(() => {
     if (lastCommand) {
